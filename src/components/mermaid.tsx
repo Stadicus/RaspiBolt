@@ -58,7 +58,11 @@ export function Mermaid({ chart }: { chart: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', ...(isDark ? darkTheme : lightTheme) });
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'loose',
+      ...(isDark ? darkTheme : lightTheme),
+    });
     mermaid
       .render(`mermaid-${id}`, chart)
       .then(({ svg }) => {
@@ -74,7 +78,7 @@ export function Mermaid({ chart }: { chart: string }) {
 
   return (
     <div
-      className="my-6 flex justify-center overflow-x-auto rounded-lg border border-fd-border bg-fd-card p-4"
+      className="border-fd-border bg-fd-card my-6 flex justify-center overflow-x-auto rounded-lg border p-4"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );

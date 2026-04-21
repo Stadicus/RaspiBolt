@@ -183,8 +183,7 @@ export default function HomePage() {
           <p>
             This makes the guide technical, but the path is as straightforward as we can make it.
             Along the way you&apos;ll pick up a working understanding of Linux, Bitcoin, and
-            Lightning, not because you have to memorize it, but because you&apos;ll actually use
-            it.
+            Lightning, not because you have to memorize it, but because you&apos;ll actually use it.
           </p>
           <p className="text-fd-muted-foreground">
             If you enjoy tinkering, care about self-sovereignty, and have a weekend to spare, this
