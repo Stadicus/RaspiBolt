@@ -1,0 +1,13 @@
+{
+  "title": "Hardware",
+  "pages": [
+    "index",
+    "preparations",
+    "operating-system",
+    "remote-access",
+    "system-configuration",
+    "security",
+    "privacy"
+  ],
+  "defaultOpen": false
+}

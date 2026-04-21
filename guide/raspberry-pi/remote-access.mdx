@@ -1,0 +1,163 @@
+---
+title: Remote access
+description: SSH to the Pi from macOS, Linux, or Windows OpenSSH. Command-line basics for first-timers. Generate and install an ed25519 key for passwordless login.
+---
+Your Pi is running somewhere in the corner of the room, with no
+screen and no keyboard. Time to connect to it from the comfort of
+your regular computer using **SSH**, the Secure Shell, and learn
+just enough command-line to get through the rest of the guide
+without cursing the terminal.
+
+## Find your Pi on the network
+
+Where did your Pi end up on the local network? Give it a minute or
+two after the first boot, it's expanding the filesystem, generating
+SSH keys, and settling in.
+
+Open a terminal on your regular computer:
+
+- **macOS**: open **Terminal** from `Applications → Utilities`.
+- **Linux**: use whichever terminal your distribution ships.
+- **Windows**: open **Windows Terminal** or **PowerShell** from the
+  Start menu.
+
+Try to reach the Pi by its hostname. Press `Ctrl`-`C` to stop:
+
+```bash
+ping raspibolt.local
+```
+
+You should see replies like `64 bytes from raspibolt.local (192.168.0.20)...`.
+That IP address on the right (yours will differ) is where the Pi
+actually lives on your network.
+
+If `ping` fails, mDNS (the `.local` name-discovery magic) isn't
+working on your network, a common quirk of some routers. The
+[official Raspberry Pi guide](https://www.raspberrypi.com/documentation/computers/remote-access.html#ip-address)
+shows how to find the IP directly on your router or with `nmap`.
+Once you have the IP (say `192.168.0.20`), use it wherever this guide
+says `raspibolt.local`.
+
+## Connect via SSH
+
+SSH is built into every current macOS, Linux, and Windows, no extra
+client to install. Connect with:
+
+```bash
+ssh admin@raspibolt.local
+```
+
+Log in with **password [A]**, the one you set in the Imager.
+
+The first time you connect, SSH asks you to confirm the Pi's host key
+fingerprint. Type `yes` and press Enter. You're now inside the Pi.
+
+<Callout type="info" title="Still using PuTTY?">
+PuTTY is no longer necessary on Windows 10 or 11, the built-in
+OpenSSH client does everything this guide needs. If you already
+have a PuTTY setup you love, it still works, but the commands here
+assume the native `ssh`.
+</Callout>
+
+## Working on the command line
+
+You're going to spend a lot of time at this prompt, so a few basics
+are worth a minute of your life:
+
+- **Tab completion**, press `Tab` to auto-complete commands,
+  filenames, and paths. Press it twice to see all matches. Once you
+  start using it you'll wonder how you ever lived without it.
+- **Command history**, press the up and down arrow keys to cycle
+  through previous commands. No need to retype anything.
+- **Admin privileges with `sudo`**, the `admin` user can't change
+  system files directly, which is deliberate. Prefix any such
+  command with `sudo` ("superuser do"), and the Pi asks for your
+  password before running it. Service users like `bitcoin` (coming
+  later) have no `sudo` at all, that's intentional too.
+- **Editing files with nano**, this guide uses the `nano` editor.
+  To save: press `Ctrl`-`O`, confirm the filename, press Enter.
+  To exit: press `Ctrl`-`X`. That's it. (If you already love `vim`
+  or `emacs`, use those; nano is just the friendliest default.)
+- **Copy and paste**, in most terminals, highlight with the mouse
+  to copy and press `Ctrl`-`Shift`-`V` to paste. On macOS Terminal,
+  use `Cmd`-`C` / `Cmd`-`V`. In Windows Terminal, right-click to
+  paste at the cursor.
+
+A selective reference of useful Linux commands lives in the
+[FAQ](../faq), bookmark it.
+
+## Set up an SSH key
+
+Passwords work, but an **SSH key pair** is better in every way:
+it's safer (a stolen password is useless without the key file), and
+it's less typing (no password prompts on every login). This is why
+the next few minutes of setup pay off every single time you log in.
+The plan is to set up the key here, then disable password logins
+entirely in the [Security](security) section.
+
+Key pairs sound like a cryptography homework assignment, but the
+workflow is mechanical: run one command, copy one file. This guide
+uses **Ed25519** keys. They're short, fast, and well supported by
+every current SSH client and server.
+
+### Generate the key pair
+
+On your **regular computer** (not the Pi), run:
+
+```bash
+ssh-keygen -t ed25519 -C "raspibolt"
+```
+
+Accept the default file location by pressing Enter, and pick a
+strong passphrase when prompted. The passphrase protects the key
+file on disk, you'll type it once per session, and your OS
+keychain can remember it after that.
+
+Two new files appear in `~/.ssh/` (on Windows:
+`%USERPROFILE%\.ssh\`):
+
+- `id_ed25519`, the **private** key. This stays on your computer
+  and nowhere else. Ever.
+- `id_ed25519.pub`, the **public** key. This is what you hand to
+  the Pi (and any other server you want to reach).
+
+<Callout type="info" title="Already have an RSA key?">
+If you've been using a working `id_rsa` for years, it still works,
+RSA 4096-bit keys are fine. Anything smaller than 4096-bit RSA is
+not. New keys should be Ed25519.
+</Callout>
+
+### Copy the public key to the Pi
+
+On **macOS or Linux**, one command does it:
+
+```bash
+ssh-copy-id admin@raspibolt.local
+```
+
+Enter **password [A]** one last time. `ssh-copy-id` appends your
+public key to `~/.ssh/authorized_keys` on the Pi, creating the
+directory and file if needed.
+
+On **Windows**, `ssh-copy-id` isn't shipped by default. Run this
+one-liner in PowerShell instead, it pipes your public key over SSH
+and sets the right permissions on the Pi:
+
+```powershell
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh admin@raspibolt.local "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+```
+
+### Verify the key works
+
+Open a fresh terminal and connect again:
+
+```bash
+ssh admin@raspibolt.local
+```
+
+You should be logged in **without being asked for password [A]**,
+only the passphrase that unlocks your local key file. If that's
+what happened, the key is working.
+
+Password logins on the Pi are still enabled at this point; you'll
+turn them off in the next chapter on [Security](security).

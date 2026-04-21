@@ -1,0 +1,53 @@
+---
+title: Overview
+description: From bare hardware to a hardened Bitcoin-ready computer.
+---
+Where does a full node actually start? Right here: a bare Raspberry
+Pi, an empty SSD, and an afternoon. By the end of this section
+you'll have a hardened, network-ready computer that's ready to carry
+a Bitcoin node, no screen, no keyboard, just a well-behaved little
+box in the corner.
+
+By the time you finish, you'll have:
+
+- A **Raspberry Pi 5** (or Pi 4) booting Debian 13 "Trixie" straight
+  from a 2 TB USB SSD.
+- Remote access over SSH using an **Ed25519 key**, with password
+  logins firmly switched off.
+- A running firewall (`ufw`) and brute-force protection (`fail2ban`).
+- The **Tor** daemon active, with its control port ready for
+  Bitcoin Core and Lightning to route their peer traffic privately.
+- **Tailscale** installed so you can SSH into the Pi from anywhere,
+  no router ports opened, no dynamic DNS.
+- Bluetooth and unused Wi-Fi radios switched off.
+
+## Assumptions
+
+- You have the hardware listed in [Preparations](preparations):
+  a Pi 5 (8 GB), a 27W USB-C PD power supply, a 2 TB USB 3 SSD, and
+  active cooling.
+- You have a regular computer (macOS, Linux, or Windows 10/11) to
+  flash the SSD and open SSH sessions from.
+- You have roughly a **couple of hours** for a first pass, not
+  counting the time `apt upgrade` spends doing its thing in the
+  background.
+
+## Pages in this section
+
+1. [Preparations](preparations), hardware list, passwords,
+   home-network hygiene.
+2. [Operating system](operating-system), flash Raspberry Pi OS
+   Lite (64-bit) to the SSD and boot the Pi.
+3. [Remote access](remote-access), connect over SSH, learn the
+   command-line basics, set up an SSH key.
+4. [System configuration](system-configuration), update
+   packages, verify SSD speed, create the data directory, check swap.
+5. [Security](security), disable password SSH, harden sshd,
+   firewall, fail2ban, open-files limit, disable Bluetooth/Wi-Fi.
+6. [Privacy](privacy), install Tor for Bitcoin and Lightning
+   peer traffic, then add Tailscale for remote SSH access.
+
+When this section is in the bag, move on to the
+[Bitcoin](../bitcoin/index) section. This is why the upcoming
+chapters can focus on Bitcoin and Lightning itself rather than
+doubling back to patch the plumbing.

@@ -1,0 +1,271 @@
+---
+title: Security
+description: SSH hardening with ed25519 keys, UFW firewall rules, fail2ban brute-force protection on systemd, open-files limit, disable Bluetooth and Wi-Fi radios.
+---
+What does "hardening" actually mean for a little computer in your
+living room? Closing doors, mostly. Your Pi is about to be reachable
+from the internet, and before you take that step you'll want to
+lock SSH down to keys only, tighten the SSH daemon, turn on a
+firewall, add brute-force protection, bump the open-files limit, and
+switch off the radios you don't need. Nothing exotic, all standard
+Debian hygiene, applied in the right order.
+
+## Disable password SSH login
+
+You already set up an Ed25519 key in
+[Remote access](remote-access#set-up-an-ssh-key). Time to turn
+off password logins entirely so only someone holding the private key
+can reach the Pi.
+
+<Callout type="warn" title="Test your key before locking passwords out">
+Before touching anything, open a **second** SSH session in a new
+terminal window and confirm it logs in **without** asking for
+password [A]. Leave that second session open while you make the
+changes, if something goes sideways, you still have a working shell
+to undo it. Seriously. You don't want to learn this the hard way.
+</Callout>
+
+1. Instead of editing the main `sshd_config` (which gets rewritten
+   on package updates), drop a small override file into the
+   `sshd_config.d/` directory, that's the modern Debian way:
+
+   ```bash
+   sudo nano /etc/ssh/sshd_config.d/raspibolt.conf
+   ```
+
+   First time with `nano`? Paste the content, then press `Ctrl`-`O`
+   to save, `Enter` to confirm the filename, and `Ctrl`-`X` to exit.
+
+2. Paste the following. The cipher-suite lines look like alphabet
+   soup, but they're really just a curated list of modern
+   algorithms, copy them as-is and move on:
+
+   ```text
+   # RaspiBolt SSH hardening
+   PermitRootLogin no
+   PasswordAuthentication no
+   KbdInteractiveAuthentication no
+   ChallengeResponseAuthentication no
+   LoginGraceTime 30
+   MaxAuthTries 3
+
+   # Modern key exchange, ciphers, and MACs only
+   KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512
+   Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr
+   MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com
+   ```
+
+3. Sanity-check the config before restarting the daemon, this
+   catches typos that would otherwise lock you out:
+
+   ```bash
+   sudo sshd -t
+   ```
+
+   No output means the file is valid.
+
+4. Restart the SSH daemon and log out:
+
+   ```bash
+   sudo systemctl restart ssh
+   exit
+   ```
+
+5. Open a fresh SSH session. You should land in a shell using your
+   key; password [A] should no longer be accepted.
+
+<Callout type="warn" title="Back up your SSH keys">
+If you lose your private key, recovery means attaching a keyboard
+and screen to the Pi. Keep a copy of `~/.ssh/id_ed25519` somewhere
+safe, an encrypted USB stick, or a password manager that supports
+file attachments.
+</Callout>
+
+**Main takeaway:** only your private key can reach the Pi over
+SSH now, passwords are off the table.
+
+## Firewall (ufw)
+
+The **Uncomplicated Firewall** (`ufw`) is Debian's friendly front-end
+to `iptables`. For now it only needs to allow SSH, every service
+you add later will open its own port when the time comes.
+
+1. Install `ufw`:
+
+   ```bash
+   sudo apt install ufw
+   ```
+
+   <Callout type="info">
+   If you see `ERROR: Couldn't determine iptables version`, reboot
+   the Pi once after installing `ufw` and carry on.
+   </Callout>
+
+2. Set default policies, allow SSH with rate limiting, turn off
+   logging, and bring the firewall up, all in one go:
+
+   ```bash
+   sudo ufw default deny incoming
+   sudo ufw default allow outgoing
+   sudo ufw limit ssh
+   sudo ufw logging off
+   sudo ufw enable
+   ```
+
+   `ufw limit ssh` blocks any IP making six or more connection
+   attempts within 30 seconds, a first layer of brute-force defence
+   on top of what `fail2ban` does below.
+
+3. Make sure `ufw` comes up at boot, and check the active rules:
+
+   ```bash
+   sudo systemctl enable ufw
+   sudo ufw status verbose
+   ```
+
+   Expected output:
+
+   ```text
+   Status: active
+   Default: deny (incoming), allow (outgoing), disabled (routed)
+   To                         Action      From
+   --                         ------      ----
+   22/tcp (SSH)               LIMIT IN    Anywhere
+   22/tcp (SSH (v6))          LIMIT IN    Anywhere (v6)
+   ```
+
+<Callout type="info">
+If you ever lock yourself out (wrong SSH port, busted config),
+attach a keyboard and screen to the Pi, log in locally, and fix the
+rules. Not fun, but always possible.
+</Callout>
+
+**Main takeaway:** nothing reaches the Pi from the network except
+rate-limited SSH, every other port stays shut by default.
+
+## Brute-force protection (fail2ban)
+
+`fail2ban` is a watchful little daemon that tails the SSH log and
+bans IP addresses that rack up failed logins. On Trixie there's a
+wrinkle: `rsyslog` is no longer installed by default, so `fail2ban`
+has to read authentication events straight from the systemd journal.
+Sounds fiddly, but it's two extra pieces and you're done.
+
+1. Install `fail2ban` and the Python bindings for the systemd journal:
+
+   ```bash
+   sudo apt install fail2ban python3-systemd
+   ```
+
+2. Create a local configuration that uses the journal backend:
+
+   ```bash
+   sudo nano /etc/fail2ban/jail.local
+   ```
+
+   Paste:
+
+   ```ini
+   [DEFAULT]
+   backend = systemd
+   bantime = 10m
+   findtime = 10m
+   maxretry = 5
+
+   [sshd]
+   enabled = true
+   ```
+
+3. Restart `fail2ban` and confirm the SSH jail is running:
+
+   ```bash
+   sudo systemctl restart fail2ban
+   sudo fail2ban-client status sshd
+   ```
+
+   Expected output:
+
+   ```text
+   Status for the jail: sshd
+   |- Filter
+   |  |- Currently failed: 0
+   |  |- Total failed:     0
+   |  `- Journal matches:  _SYSTEMD_UNIT=sshd.service + _COMM=sshd
+   `- Actions
+      |- Currently banned: 0
+      |- Total banned:     0
+      `- Banned IP list:
+   ```
+
+<Callout type="info" title="Why not the default backend?">
+Stock Debian `fail2ban` assumes `rsyslog` is writing `/var/log/auth.log`.
+On Trixie it isn't, skip the two changes above and `fail2ban` will
+run happily, read an empty log, and ban precisely nobody.
+</Callout>
+
+**Main takeaway:** any IP that fumbles five logins gets a
+ten-minute timeout, automatically, in the background, forever.
+
+## Raise the open-files limit
+
+Under heavy load, or a deliberate flood, `bitcoind` and LND open a
+lot of TCP connections at once. The default file-handle limit is far
+too low for that and throws `too many open files` errors.
+
+1. Create `/etc/security/limits.d/90-limits.conf`:
+
+   ```bash
+   sudo nano /etc/security/limits.d/90-limits.conf
+   ```
+
+   Paste:
+
+   ```text
+   *    soft nofile 128000
+   *    hard nofile 128000
+   root soft nofile 128000
+   root hard nofile 128000
+   ```
+
+2. Make sure PAM actually applies those limits on login. Open each
+   of these files and add a `pam_limits.so` line, right before any
+   trailing comment:
+
+   ```bash
+   sudo nano /etc/pam.d/common-session
+   sudo nano /etc/pam.d/common-session-noninteractive
+   ```
+
+   Add:
+
+   ```text
+   session required                        pam_limits.so
+   ```
+
+The new limits kick in at the next login.
+
+## Disable Bluetooth and Wi-Fi
+
+A node dedicated to Bitcoin has no use for Bluetooth, and if you're
+connected over Ethernet, no use for Wi-Fi either. Turning off the
+radios you aren't using removes another slice of attack surface.
+
+1. Edit the firmware configuration:
+
+   ```bash
+   sudo nano /boot/firmware/config.txt
+   ```
+
+2. Disable Bluetooth by adding this line at the end of the file:
+
+   ```text
+   dtoverlay=disable-bt
+   ```
+
+3. If the Pi is connected by Ethernet cable, also disable Wi-Fi:
+
+   ```text
+   dtoverlay=disable-wifi
+   ```
+
+Save and exit. The radios stay off from the next reboot onward.

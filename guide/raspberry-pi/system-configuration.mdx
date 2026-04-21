@@ -1,0 +1,148 @@
+---
+title: System configuration
+description: apt full-upgrade, verify SSD speed with hdparm, create /data directory and service-user symlinks, confirm zram swap is active on Trixie.
+---
+Fresh install, fresh habits. You'll patch the system, make sure the
+SSD is pulling its weight, carve out a tidy place for all the node
+data to live, and confirm that swap is doing its job. Quick pages,
+all of it, but it's the groundwork the rest of the guide leans on.
+
+## Log back in
+
+Open an SSH session to the Pi as the `admin` user:
+
+```bash
+ssh admin@raspibolt.local
+```
+
+To end a session at any time, type `exit`. And a quick reminder:
+anything that touches system files needs `sudo` in front of it
+(the Pi will ask for **password [A]** the first time each session).
+
+## System update
+
+Keeping the system patched is table stakes. Debian's `apt` package
+manager handles OS updates and application upgrades in the same
+command.
+
+1. Set a default locale. This silences the noisy `LC_ALL: cannot
+   change locale` warnings that some tools throw when you SSH in from
+   a machine with a different language setting:
+
+   ```bash
+   echo "export LC_ALL=C" >> ~/.bashrc
+   source ~/.bashrc
+   ```
+
+2. Refresh the package index and install every available upgrade in
+   one go:
+
+   ```bash
+   sudo apt update && sudo apt full-upgrade
+   ```
+
+3. Install `git`, you'll need it later to clone source code:
+
+   ```bash
+   sudo apt install git
+   ```
+
+<Callout type="info">
+Run `sudo apt update && sudo apt full-upgrade` every few months to
+pick up security fixes. Set a reminder if you're the forgetful type.
+</Callout>
+
+## Check SSD performance
+
+A fast SSD is non-negotiable. A slow drive drags the initial block
+download into the weekend and turns the Electrs index build into a
+slog. This is why it pays to benchmark now, before you've committed
+a few hundred gigabytes of blockchain data to the wrong enclosure.
+The Pi 5 handles USB 3 storage well, but some enclosures still
+underperform, this is the moment to catch that.
+
+1. Install `hdparm`, a classic disk benchmarking tool:
+
+   ```bash
+   sudo apt install hdparm
+   ```
+
+2. Confirm your SSD shows up as `/dev/sda`:
+
+   ```bash
+   lsblk -pli
+   ```
+
+3. Measure raw read throughput:
+
+   ```bash
+   sudo hdparm -t --direct /dev/sda
+   ```
+
+   Expected output (your number will differ):
+
+   ```text
+   Timing O_DIRECT disk reads: 932 MB in  3.00 seconds = 310.23 MB/sec
+   ```
+
+Anything above **100 MB/s** is fine for a full node. If you see
+numbers below 50 MB/s, the enclosure is probably falling back to UAS
+mode with a buggy driver, a well-known problem with certain chipsets
+(hello again, JMicron). The
+[Fix bad USB3 performance](../troubleshooting#fix-bad-usb3-performance)
+section in Troubleshooting walks through disabling UAS for a specific
+drive.
+
+<Callout type="info" title="Using NVMe via the M.2 HAT+">
+On NVMe the device is `/dev/nvme0n1`, not `/dev/sda`. You can skip
+this check entirely, NVMe drives comfortably clear any throughput
+bar this guide sets.
+</Callout>
+
+## Data directory
+
+Everything the node cares about, the blockchain, Lightning channel
+state, backups, will live under `/data/`. Keeping it outside any
+user's home directory makes permissions obvious and means you can
+move it to a bigger drive later with nothing more than a mount.
+
+Create it once, owned by `admin`:
+
+```bash
+sudo mkdir /data
+sudo chown admin:admin /data
+```
+
+## Swap
+
+Swap is the safety net: when RAM fills up, the system offloads idle
+pages to "swap" instead of crashing. Compressed swap held in RAM
+sounds like a contradiction, but that's exactly what zram is, and
+it works beautifully for a node. On Raspberry Pi OS Trixie this is
+handled out of the box by the **`rpi-swap`** service, which uses
+**zram** rather than a file on the SSD. Clever, and already running.
+
+But you do **not** need to install `dphys-swapfile` or edit
+`/etc/dphys-swapfile`. Old guides told you to; ignore them.
+
+Verify that swap is active:
+
+```bash
+swapon --show
+```
+
+You should see something like:
+
+```text
+NAME       TYPE       SIZE USED PRIO
+/dev/zram0 partition    2G   0B  100
+```
+
+On an 8 GB Pi 5, the default 2 GB zram swap is plenty.
+
+<Callout type="info" title="Why zram and not a swapfile?">
+A swapfile on an SSD wears the flash with every heavy swap burst,
+and on a microSD card it's painfully slow. `zram` sidesteps both:
+pages are compressed and kept in RAM, so an 8 GB Pi effectively gets
+a little more memory without ever touching the disk.
+</Callout>
