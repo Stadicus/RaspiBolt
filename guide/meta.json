@@ -1,0 +1,14 @@
+{
+  "root": true,
+  "pages": [
+    "backstory",
+    "architecture",
+    "raspberry-pi",
+    "bitcoin",
+    "lightning",
+    "bonus",
+    "---Reference---",
+    "troubleshooting",
+    "faq"
+  ]
+}
