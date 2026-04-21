@@ -1,0 +1,75 @@
+name: Publish site (v4)
+
+on:
+  push:
+    branches: [feature/v4-rewrite]
+    paths:
+      - 'guide/**'
+      - 'src/**'
+      - 'lib/**'
+      - 'public/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'next.config.mjs'
+      - 'source.config.ts'
+      - 'tsconfig.json'
+      - 'postcss.config.mjs'
+      - 'eslint.config.mjs'
+      - '.github/workflows/site-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: site-publish
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static site
+        env:
+          NEXT_PUBLIC_BASE_PATH: /RaspiBolt
+        run: npm run build
+
+      # Stage the built site under a directory that mirrors the deploy URL.
+      # Lychee resolves /RaspiBolt/foo root-relative links against --root-dir,
+      # so the path on disk needs to match — otherwise every internal link 404s.
+      - name: Stage for link check
+        run: |
+          mkdir -p staging/RaspiBolt
+          cp -r out/. staging/RaspiBolt/
+
+      - name: Check internal links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --config .lychee.toml
+            --root-dir ${{ github.workspace }}/staging
+            staging/RaspiBolt/**/*.html
+          fail: true
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          publish_branch: gh-pages
+          force_orphan: false
+          commit_message: 'site: render from ${{ github.sha }}'
