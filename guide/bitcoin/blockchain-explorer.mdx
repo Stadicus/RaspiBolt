@@ -1,0 +1,354 @@
+---
+title: Blockchain explorer
+description: Run BTC RPC Explorer on Node.js 22 behind Caddy HTTPS. Private lookup for blocks, transactions, mempool, fee estimates, UTXO queries. No leakage to public explorers.
+---
+Querying a public block explorer is one of the sneakiest ways to
+leak your financial activity. Every address you search, every
+transaction ID you paste, every fee chart you refresh tells the
+explorer operator "this address matters to somebody at this IP."
+Trust your own node instead.
+
+[BTC RPC Explorer](https://github.com/janoside/btc-rpc-explorer) is
+a small, database-free web UI by Daniel McNally. It talks to your
+Bitcoin Core over RPC and to Electrs for address balance queries,
+gives you a clean browser interface for blocks, transactions,
+mempool, and fee estimates, and never phones home.
+
+## What you'll do
+
+- Install Node.js 22 LTS from NodeSource.
+- Create a dedicated `btcrpcexplorer` user and clone the app.
+- Wire up the `.env` config so it reads `bitcoind`'s cookie and
+  queries Electrs for address data.
+- Run it as a systemd service.
+- Put **Caddy** in front for HTTPS on the LAN.
+
+## Prerequisites
+
+You finished [Bitcoin client](/docs/bitcoin/bitcoin-client) and
+[Electrum server](/docs/bitcoin/electrum-server). Bitcoin Core is
+fully synced (`verificationprogress` at 1.0), `txindex=1`
+is in `bitcoin.conf` (the default config in this guide already has
+it), and Electrs is indexed and answering queries.
+
+## Install Node.js 22 LTS
+
+Debian 13 ships Node.js 20; BTC RPC Explorer is tested against
+Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
+
+1. Add NodeSource and install:
+
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash,
+   sudo apt install nodejs
+   ```
+
+2. Confirm the version:
+
+   ```bash
+   node --version
+   npm --version
+   ```
+
+## Create the service user
+
+```bash
+sudo adduser --disabled-password --gecos "" btcrpcexplorer
+sudo adduser btcrpcexplorer bitcoin
+```
+
+The `bitcoin` group membership is what lets the explorer read
+`/data/bitcoin/.cookie` for RPC authentication.
+
+## Install BTC RPC Explorer
+
+1. Switch to the new user and fetch the latest release tag:
+
+   ```bash
+   sudo su - btcrpcexplorer
+   VERSION=$(curl -sL https://api.github.com/repos/janoside/btc-rpc-explorer/releases/latest | grep -oP '"tag_name": "v\K[^"]+')
+   echo "Installing BTC RPC Explorer $VERSION"
+   ```
+
+2. Clone the source and pull in dependencies with npm. Expect this
+   to take 10 to 20 minutes on a Pi 5, a lot of native modules get
+   built from source:
+
+   ```bash
+   git clone --branch "v$VERSION" https://github.com/janoside/btc-rpc-explorer.git
+   cd btc-rpc-explorer
+   npm install
+   ```
+
+<Callout type="info" title="About the npm audit noise">
+`npm install` will print warnings about vulnerabilities in transitive
+dependencies. Read them, but don't panic. The explorer serves only
+to **you** on your LAN; the realistic threat surface is your own
+browser, not a remote attacker poking at the Express server. Don't
+blindly `npm audit fix`, it'll break things.
+</Callout>
+
+## Configure
+
+The explorer reads its config from `.env` in the install directory.
+A heavily commented template ships with the source. You only need to
+change a handful of lines.
+
+1. Copy the template and open it:
+
+   ```bash
+   cp .env-sample .env
+   nano .env
+   ```
+
+2. Set the Bitcoin Core connection (cookie auth, no password to
+   leak):
+
+   ```ini
+   BTCEXP_BITCOIND_HOST=127.0.0.1
+   BTCEXP_BITCOIND_PORT=8332
+   BTCEXP_BITCOIND_COOKIE=/data/bitcoin/.cookie
+   BTCEXP_BITCOIND_RPC_TIMEOUT=10000
+   ```
+
+3. Route address-balance queries through your local Electrs so they
+   never leak to a third party:
+
+   ```ini
+   BTCEXP_ADDRESS_API=electrum
+   BTCEXP_ELECTRUM_SERVERS=tcp://127.0.0.1:50001
+   ```
+
+4. Pick a privacy posture. "More information" mode pulls exchange
+   rates and a few other externally-hosted tidbits over the public
+   internet:
+
+   ```ini
+   BTCEXP_PRIVACY_MODE=false
+   BTCEXP_NO_RATES=false
+   ```
+
+   Or lock it down completely:
+
+   ```ini
+   BTCEXP_PRIVACY_MODE=true
+   BTCEXP_NO_RATES=true
+   ```
+
+5. (Optional) Gate the UI with a password. Any username works; only
+   the password is checked. Use **password [D]** from
+   [Preparations](/docs/raspberry-pi/preparations#passwords):
+
+   ```ini
+   BTCEXP_BASIC_AUTH_PASSWORD=YourPasswordD
+   ```
+
+6. Dark theme, because it's a block explorer and you're not a
+   monster:
+
+   ```ini
+   BTCEXP_UI_THEME=dark
+   ```
+
+7. Save, exit, and drop back to `admin`:
+
+   ```bash
+   exit
+   ```
+
+## Run it once by hand
+
+Before handing it to systemd, start it manually to shake out any
+config mistakes:
+
+```bash
+sudo su - btcrpcexplorer
+cd ~/btc-rpc-explorer
+npm run start
+```
+
+The explorer should bind to `http://127.0.0.1:3002`. If the console
+fills with RPC errors, Bitcoin Core is either not running or still
+reindexing, leave this alone until `bitcoin-cli getblockchaininfo`
+reports a `verificationprogress` at 1.0.
+
+Stop it with `Ctrl`-`C` and exit back to `admin`:
+
+```bash
+exit
+```
+
+## Systemd unit
+
+1. Create the service file:
+
+   ```bash
+   sudo nano /etc/systemd/system/btcrpcexplorer.service
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: systemd unit for BTC RPC Explorer
+   # /etc/systemd/system/btcrpcexplorer.service
+
+   [Unit]
+   Description=BTC RPC Explorer
+   Wants=bitcoind.service electrs.service
+   After=bitcoind.service electrs.service
+
+   [Service]
+   WorkingDirectory=/home/btcrpcexplorer/btc-rpc-explorer
+   ExecStart=/usr/bin/npm start
+   User=btcrpcexplorer
+   Restart=on-failure
+   RestartSec=30
+
+   # Hardening
+   PrivateTmp=true
+   NoNewPrivileges=true
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+3. Enable and start:
+
+   ```bash
+   sudo systemctl enable btcrpcexplorer
+   sudo systemctl start btcrpcexplorer
+   sudo journalctl -f -u btcrpcexplorer
+   ```
+
+   Watch the log for a "listening on port 3002" line, then
+   `Ctrl`-`C`.
+
+## HTTPS on the LAN with Caddy
+
+The explorer's Express server speaks HTTP on port 3002. You want
+browser access over HTTPS, and you want it without fighting
+certificate tooling. **Caddy** handles this in five lines of config
+and issues itself a certificate from its own internal CA.
+
+### Install Caddy
+
+The official Caddy apt repo is the right source. One-time setup:
+
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install caddy
+caddy version
+```
+
+### Configure the reverse proxy
+
+1. Open the Caddyfile:
+
+   ```bash
+   sudo nano /etc/caddy/Caddyfile
+   ```
+
+2. Replace the default welcome-page stanza with:
+
+   ```text
+   # RaspiBolt: Caddy HTTPS reverse proxy
+   # /etc/caddy/Caddyfile
+
+   # BTC RPC Explorer
+   :4000 {
+     tls internal
+     reverse_proxy 127.0.0.1:3002
+   }
+   ```
+
+   `tls internal` tells Caddy to mint and manage a self-signed
+   certificate from its own CA, no public DNS needed.
+
+3. Reload Caddy and open the firewall:
+
+   ```bash
+   sudo systemctl reload caddy
+   sudo ufw allow 4000/tcp comment 'BTC RPC Explorer (Caddy)'
+   ```
+
+4. Point your browser at `https://raspibolt.local:4000` (or the
+   Pi's IP address). Click past the browser's one-time certificate
+   warning, self-signed certs trigger that, and on a LAN it's fine.
+
+<Callout type="info" title="Trust Caddy's CA on your computer (optional)">
+Tired of the certificate warning? Caddy's internal CA root lives
+at `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt`
+on the Pi. Copy that file to your computer, import it into the
+system trust store, and all the Caddy-fronted services on this node
+will be trusted without prompting. Skip this if you'd rather keep
+the CA contained to the Pi, first-use trust is fine too.
+</Callout>
+
+**Main takeaway:** you can now browse blocks, transactions, and
+fee estimates at `https://raspibolt.local:4000` without telling
+anyone else what you're looking at.
+
+## Remote access over Tor (optional)
+
+Want the explorer available from a phone on mobile data? Expose it
+as a Tor hidden service and visit it through Tor Browser.
+
+1. Add a stanza to `/etc/tor/torrc`:
+
+   ```bash
+   sudo nano /etc/tor/torrc
+   ```
+
+   ```text
+   # Hidden service: BTC RPC Explorer
+   HiddenServiceDir /var/lib/tor/hidden_service_btcrpcexplorer/
+   HiddenServiceVersion 3
+   HiddenServicePort 80 127.0.0.1:3002
+   ```
+
+2. Reload Tor and fetch the `.onion`:
+
+   ```bash
+   sudo systemctl reload tor
+   sudo cat /var/lib/tor/hidden_service_btcrpcexplorer/hostname
+   ```
+
+3. Open that address in the [Tor Browser](https://www.torproject.org).
+   No certificates, no warnings, Tor's own end-to-end encryption
+   replaces TLS.
+
+## Updating BTC RPC Explorer later
+
+1. Stop the service and switch to the app user:
+
+   ```bash
+   sudo systemctl stop btcrpcexplorer
+   sudo su - btcrpcexplorer
+   ```
+
+2. Update to the latest tag:
+
+   ```bash
+   cd ~/btc-rpc-explorer
+   git fetch
+   git reset --hard HEAD
+   VERSION=$(git tag | sort --version-sort | tail -n 1)
+   echo "Upgrading to $VERSION"
+   git checkout "$VERSION"
+   npm install
+   exit
+   ```
+
+3. Restart:
+
+   ```bash
+   sudo systemctl start btcrpcexplorer
+   ```
+
+Always skim the [changelog](https://github.com/janoside/btc-rpc-explorer/blob/master/CHANGELOG.md)
+first, breaking changes are rare but not unheard of.

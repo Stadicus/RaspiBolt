@@ -1,0 +1,5 @@
+{
+  "title": "Bitcoin",
+  "pages": ["index", "bitcoin-client", "electrum-server", "blockchain-explorer", "desktop-wallet"],
+  "defaultOpen": false
+}

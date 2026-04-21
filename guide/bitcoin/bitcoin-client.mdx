@@ -1,0 +1,426 @@
+---
+title: Bitcoin client
+description: Install and run Bitcoin Core (bitcoind), GPG-verify the release, tune bitcoin.conf for a Pi 5 (dbcache, maxmempool), and sync the full blockchain (IBD, initial block download) through Tor.
+---
+[Bitcoin Core](https://bitcoincore.org) is the reference client for
+the Bitcoin network. It downloads the entire blockchain, validates
+every transaction since the genesis block, and from then on holds
+the authoritative answer to "is this UTXO real?", no third party
+asked, no trust extended. Everything else in this guide, Electrs,
+Lightning, the block explorer, is a consumer of this node.
+
+## What to expect
+
+Installing `bitcoind` is a short job. Syncing it is not. On a Pi 5
+with a good USB 3 SSD (or NVMe via the M.2 HAT+), the initial block
+download takes roughly **two to five days**. You don't have to sit
+with it, start it, check in once a day, come back when
+`verificationprogress` is a hair below 1.
+
+<Callout type="info" title="Pi 4 owners">
+A Pi 4 with 8 GB RAM still gets there, just slower, plan for five to
+seven days for the initial sync and keep the `dbcache` a little lower
+(see below). Anything less than 8 GB of RAM will struggle once LND
+and Electrs join the party; upgrade if you can.
+</Callout>
+
+## Create the bitcoin user
+
+`bitcoind` runs as its own system user. No shell password, no
+sudo, if something ever does manage to break out of the daemon, it
+lands in a sandbox, not on your `admin` account.
+
+1. Create the user and add `admin` to its group so you can read its
+   files without juggling `sudo`:
+
+   ```bash
+   sudo adduser --gecos "" --disabled-password bitcoin
+   sudo adduser admin bitcoin
+   ```
+
+2. Put the `bitcoin` user into the `debian-tor` group so it can read
+   Tor's cookie file and use the control port you set up earlier:
+
+   ```bash
+   sudo adduser bitcoin debian-tor
+   ```
+
+## Create the data directory
+
+Bitcoin Core defaults to `~/.bitcoin` inside the user's home. On
+this node the chain lives under `/data/bitcoin` on the SSD, a
+separate mount you carved out in [System configuration](/docs/raspberry-pi/system-configuration#data-directory).
+A symlink from `/home/bitcoin/.bitcoin` to that location keeps the
+defaults happy while the actual data sits on the fast disk.
+
+```bash
+sudo mkdir /data/bitcoin
+sudo chown bitcoin:bitcoin /data/bitcoin
+sudo ln -s /data/bitcoin /home/bitcoin/.bitcoin
+sudo chown -h bitcoin:bitcoin /home/bitcoin/.bitcoin
+```
+
+## Download and verify Bitcoin Core
+
+Never run a Bitcoin binary you haven't verified. The point of a
+full node is to trust your own software, which means the software
+has to be what the developers actually signed.
+
+1. As `admin`, drop into `/tmp` (cleared on every reboot) and pull
+   the binary, the checksum file, and the signature file:
+
+   ```bash
+   cd /tmp
+   wget %urls.bitcoinDownload%
+   wget %urls.bitcoinSha256%
+   wget %urls.bitcoinSha256Sig%
+   ```
+
+2. Check the checksum of the archive against the reference. The
+   "improperly formatted" warning is about unrelated platforms in
+   the same file, ignore it:
+
+   ```bash
+   sha256sum --ignore-missing --check SHA256SUMS
+   ```
+
+   You want to see:
+
+   ```text
+   %files.bitcoinArchive%: OK
+   ```
+
+3. Bitcoin Core releases are signed by multiple maintainers through
+   the [guix.sigs repository](https://github.com/bitcoin-core/guix.sigs).
+   Import all current signing keys in one sweep:
+
+   ```bash
+   curl -s "https://api.github.com/repositories/355107265/contents/builder-keys" \
+     | grep download_url \
+     | grep -oE "https://[a-zA-Z0-9./-]+" \
+     | while read url; do curl -s "$url" | gpg --import; done
+   ```
+
+4. Verify the checksum file's signatures. You want several `Good
+   signature` lines, one signature alone is not enough:
+
+   ```bash
+   gpg --verify SHA256SUMS.asc
+   ```
+
+   Skim the output for multiple lines like:
+
+   ```text
+   gpg: Good signature from "..."
+   Primary key fingerprint: ...
+   ```
+
+<Callout type="warn" title="Don't skip the signature check">
+A matching SHA256 only proves the file matches the checksum file.
+The GPG step is what proves the checksum file itself came from the
+Bitcoin Core maintainers and not someone who also controls the
+download server. Verify both, or verify neither.
+</Callout>
+
+## Install the binaries
+
+If checksum and signature are happy, extract and install:
+
+```bash
+tar -xvf %files.bitcoinArchive%
+sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-%versions.bitcoin_core%/bin/*
+bitcoin-cli --version
+```
+
+The version string should start with `Bitcoin Core RPC client version
+v%versions.bitcoin_core%`.
+
+## Generate RPC credentials
+
+Other programs (Electrs, LND, the block explorer) talk to `bitcoind`
+through its RPC interface. Bitcoin Core doesn't store the password
+in plaintext, it stores a salted hash. A short Python script ships
+with the source tree to generate the config line.
+
+1. As the `bitcoin` user, fetch the helper script:
+
+   ```bash
+   sudo su - bitcoin
+   cd .bitcoin
+   wget https://raw.githubusercontent.com/bitcoin/bitcoin/master/share/rpcauth/rpcauth.py
+   ```
+
+2. Run it with the username `raspibolt` and your **password [B]**
+   from [Preparations](/docs/raspberry-pi/preparations#passwords).
+   Put a leading space in front of the command so bash keeps it out
+   of your shell history, passwords don't belong in `~/.bash_history`:
+
+   ```bash
+    python3 rpcauth.py raspibolt YourPasswordB
+   ```
+
+   The script prints a line starting with `rpcauth=raspibolt:...$...`.
+   Copy it, you'll paste it into the config file next.
+
+## Write bitcoin.conf
+
+This config is tuned for a Pi 5 with 8 GB of RAM: a generous `dbcache`
+to accelerate the initial sync, outbound traffic through Tor, ZMQ
+ports exposed for LND later on, and RPC locked to localhost.
+
+1. Still as the `bitcoin` user, open the config:
+
+   ```bash
+   nano /home/bitcoin/.bitcoin/bitcoin.conf
+   ```
+
+2. Paste the following. Replace the `rpcauth=` line with the one
+   `rpcauth.py` just printed for you:
+
+   ```ini
+   # RaspiBolt: bitcoind configuration
+   # /home/bitcoin/.bitcoin/bitcoin.conf
+
+   # Daemon
+   server=1
+   txindex=1
+
+   # Network, listen on IPv4 localhost, reach peers over Tor
+   listen=1
+   listenonion=1
+   bind=127.0.0.1
+   proxy=127.0.0.1:9050
+
+   # RPC, paste your own line from rpcauth.py
+   rpcauth=<replace-me>
+   rpccookieperms=group
+
+   # ZMQ for LND and other consumers
+   zmqpubrawblock=tcp://127.0.0.1:28332
+   zmqpubrawtx=tcp://127.0.0.1:28333
+
+   # Electrs gets a whitelisted block-download fast path
+   whitelist=download@127.0.0.1
+
+   # Peer connections
+   maxconnections=40
+   maxuploadtarget=5000
+
+   # Memory pool
+   maxmempool=300
+
+   # Initial block download tuning (Pi 5, 8 GB RAM)
+   # Reduce dbcache to ~450 after the chain is synced.
+   dbcache=2000
+   blocksonly=1
+   ```
+
+3. Lock the file down so only `bitcoin` and its group can read it,
+   the `rpcauth` hash isn't exactly a secret, but it's a credential:
+
+   ```bash
+   chmod 640 /home/bitcoin/.bitcoin/bitcoin.conf
+   ```
+
+<Callout type="info" title="Why blocksonly=1 during IBD?">
+`blocksonly=1` tells `bitcoind` to skip relaying loose transactions
+during the initial sync. It cuts bandwidth use significantly while
+the node is chewing through history. You'll turn it off after the
+sync completes, alongside the `dbcache` reduction, see the bottom
+of this page.
+</Callout>
+
+## Systemd unit
+
+The node needs to start on boot and stay running, that's what
+systemd is for. This unit runs `bitcoind` as the `bitcoin` user,
+locks it into a few standard hardening primitives, and restarts on
+failure with a sensible backoff.
+
+1. Drop back to `admin`:
+
+   ```bash
+   exit
+   ```
+
+2. Create the unit file:
+
+   ```bash
+   sudo nano /etc/systemd/system/bitcoind.service
+   ```
+
+3. Paste:
+
+   ```ini
+   # RaspiBolt: systemd unit for bitcoind
+   # /etc/systemd/system/bitcoind.service
+
+   [Unit]
+   Description=Bitcoin daemon
+   After=network-online.target tor.service
+   Wants=network-online.target
+
+   [Service]
+   ExecStart=/usr/local/bin/bitcoind -daemon \
+                                     -pid=/run/bitcoind/bitcoind.pid \
+                                     -conf=/home/bitcoin/.bitcoin/bitcoin.conf \
+                                     -datadir=/home/bitcoin/.bitcoin \
+                                     -startupnotify="systemd-notify --ready"
+
+   Type=forking
+   PIDFile=/run/bitcoind/bitcoind.pid
+   Restart=on-failure
+   TimeoutSec=300
+   RestartSec=30
+
+   User=bitcoin
+   UMask=0027
+
+   RuntimeDirectory=bitcoind
+   RuntimeDirectoryMode=0710
+
+   # Hardening
+   PrivateTmp=true
+   ProtectSystem=full
+   NoNewPrivileges=true
+   PrivateDevices=true
+   MemoryDenyWriteExecute=true
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+4. Enable it (so it runs on boot) and start it now:
+
+   ```bash
+   sudo systemctl enable bitcoind.service
+   sudo systemctl start bitcoind.service
+   ```
+
+5. Also symlink the data directory into `admin`'s home so
+   `bitcoin-cli` works without a `-datadir` flag:
+
+   ```bash
+   ln -s /data/bitcoin /home/admin/.bitcoin
+   ```
+
+## Verify it's syncing
+
+1. Check the service is up:
+
+   ```bash
+   sudo systemctl status bitcoind.service
+   ```
+
+   You want `Active: active (running)`.
+
+2. Confirm the cookie file is group-readable, Electrs and LND need
+   this later:
+
+   ```bash
+   ls -la /home/admin/.bitcoin/.cookie
+   ```
+
+   The mode should be `-rw-r-----` with owner `bitcoin` and group
+   `bitcoin`.
+
+3. Ask the running node for its view of the chain:
+
+   ```bash
+   bitcoin-cli getblockchaininfo
+   ```
+
+   Early on you'll see a low `blocks` number and a `verificationprogress`
+   far below 1. That's the initial block download in progress. Check
+   back each day; when `verificationprogress` reads `0.99999...`, the
+   node is caught up.
+
+4. To watch it work in real time, tail the debug log (`Ctrl`-`C` to
+   exit):
+
+   ```bash
+   tail -f /home/admin/.bitcoin/debug.log
+   ```
+
+<Callout type="warn" title="Back up any wallet you create">
+Bitcoin Core on the RaspiBolt is **not** where you should store
+funds, the Electrum server and Sparrow Wallet in the next pages
+are. If you do create a wallet here for testing, the file lives at
+`/data/bitcoin/wallets/<name>/wallet.dat`. Copy it to an encrypted
+USB stick before you load any real sats into it. The Pi is a node,
+not a vault.
+</Callout>
+
+**Main takeaway:** `bitcoind` is running under its own user, syncing
+the chain through Tor, and exposing the RPC and ZMQ surfaces the
+next services in this guide will plug into.
+
+## After the initial sync
+
+Once `verificationprogress` clears `0.99999...`, trim the `dbcache`
+back to a sensible steady-state value so Electrs and LND have room
+to breathe, and turn transaction relay back on so the node earns
+its keep on the network.
+
+1. Open the config:
+
+   ```bash
+   sudo nano /home/bitcoin/.bitcoin/bitcoin.conf
+   ```
+
+2. Comment out the IBD tuning lines:
+
+   ```ini
+   #dbcache=2000
+   #blocksonly=1
+   ```
+
+3. Restart the daemon:
+
+   ```bash
+   sudo systemctl restart bitcoind
+   ```
+
+Bitcoin Core now uses its default ~450 MB cache and relays
+transactions in addition to blocks.
+
+## OpenTimestamps client (optional)
+
+Later in this guide you'll verify signatures on LND, Electrs, and
+other software. Those projects ship OpenTimestamps proofs for their
+release files, cryptographic evidence that a given file existed
+before a particular Bitcoin block. Your node can verify those proofs
+against its own chain data, so you're not trusting a third-party
+timestamp server.
+
+```bash
+sudo apt install python3 python3-dev python3-pip python3-setuptools python3-wheel
+sudo pip3 install opentimestamps-client --break-system-packages
+ots --version
+```
+
+The `--break-system-packages` flag is Debian 13's way of telling you
+that it prefers packaged installs, in this case, upstream pip is
+the only current source for the client, and it's an isolated tool
+that does not touch the system Python.
+
+## Updating Bitcoin Core later
+
+Upgrades follow the same download-verify-install rhythm as a fresh
+install. Always read the [release notes](https://github.com/bitcoin/bitcoin/releases)
+first, some releases change the data format or default behaviour.
+The `%versions.bitcoin_core%` token and its derived URL in
+`lib/versions.ts` are the single source of truth in this guide; bump
+that file when a new version lands.
+
+```bash
+cd /tmp
+wget %urls.bitcoinDownload%
+wget %urls.bitcoinSha256%
+wget %urls.bitcoinSha256Sig%
+sha256sum --ignore-missing --check SHA256SUMS
+gpg --verify SHA256SUMS.asc
+tar -xvf %files.bitcoinArchive%
+sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-%versions.bitcoin_core%/bin/*
+sudo systemctl restart bitcoind
+```

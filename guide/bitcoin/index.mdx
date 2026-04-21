@@ -1,0 +1,59 @@
+---
+title: Overview
+description: Install Bitcoin Core, Electrs, and a block explorer, then point a desktop wallet at your own node.
+---
+With the Pi hardened and Tor humming along, the fun part starts.
+You'll turn this neat little box into a first-class citizen of the
+Bitcoin network, a node that validates every block back to the
+genesis block, indexes every transaction for your own software and
+hardware wallets, and serves a private block explorer you never have
+to trust a third party for again.
+
+By the time you finish this section, you'll have:
+
+- **Bitcoin Core %versions.bitcoin_core%** running as a systemd
+  service, syncing the full blockchain, routing outbound through Tor.
+- **Electrs %versions.electrs%** indexing the chain for your desktop
+  wallet, no more leaking addresses to public Electrum servers.
+- **BTC RPC Explorer** giving you a private web UI for blocks,
+  transactions, mempool, and fee estimates.
+- **Sparrow Wallet** on your laptop, talking to your own Electrum
+  server over TLS, ready to drive a hardware wallet.
+
+## Prerequisites
+
+You've finished the [Raspberry Pi](/docs/raspberry-pi) section. The
+Pi is on the network, SSH is locked to keys, `ufw` and `fail2ban`
+are on watch, and the Tor daemon is listening on its control port
+ready for Bitcoin Core to plug in.
+
+If you want the big picture first, [Architecture](/docs/architecture)
+shows how Bitcoin Core, Electrs, and the block explorer fit together
+with the rest of the stack.
+
+## About the time commitment
+
+The install commands themselves take an afternoon. The blockchain
+sync is the long pole: on a Pi 5 with a decent SSD, the initial block
+download runs about two to five days, and Electrs then spends another
+half day to a day indexing on top of that. Neither step needs
+babysitting, kick it off, glance at the log once a day, and come
+back when it's done.
+
+## Pages in this section
+
+1. [Bitcoin client](/docs/bitcoin/bitcoin-client), install Bitcoin
+   Core %versions.bitcoin_core%, verify the release, tune the config
+   for a Pi 5, start syncing.
+2. [Electrum server](/docs/bitcoin/electrum-server), compile
+   Electrs %versions.electrs%, index the chain, put Caddy in front
+   of it for TLS on the LAN.
+3. [Blockchain explorer](/docs/bitcoin/blockchain-explorer), install
+   BTC RPC Explorer on Node.js 22, proxy it through Caddy, view your
+   own chain.
+4. [Desktop wallet](/docs/bitcoin/desktop-wallet), point Sparrow
+   (or an alternative) at your Electrum server, drive a hardware
+   wallet, label UTXOs, take coin control seriously.
+
+When the dust settles, head to the [Lightning](/docs/lightning)
+section to turn this node into a Lightning node as well.
