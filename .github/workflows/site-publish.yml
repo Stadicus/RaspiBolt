@@ -1,8 +1,12 @@
 name: Publish site (v4)
 
+# Fires on pushes to master (post-merge auto-deploy) and to
+# feature/v4-rewrite (staging preview during ongoing work). Both
+# write to the same gh-pages branch, so the live site always
+# reflects whatever hit the target branch last.
 on:
   push:
-    branches: [feature/v4-rewrite]
+    branches: [master, feature/v4-rewrite]
     paths:
       - 'guide/**'
       - 'src/**'
