@@ -1,0 +1,50 @@
+@import 'tailwindcss';
+@import './theme.css';
+@import 'fumadocs-ui/css/preset.css';
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+/* ─────────────────── Typography refinements ───────────────────
+ * Tighter tracking for headings (matches the landing page),
+ * warmer code-block treatment, subtle link underline. All of
+ * this piggybacks on Fumadocs' built-in prose styles; we only
+ * sharpen where the defaults feel too neutral.
+ */
+
+article h1 {
+  letter-spacing: -0.025em;
+}
+
+article h2,
+article h3,
+article h4 {
+  letter-spacing: -0.015em;
+}
+
+/* Inline code — amber tint so it stands out from body text */
+article :not(pre) > code {
+  background-color: color-mix(in srgb, var(--color-fd-primary) 10%, transparent);
+  color: color-mix(in srgb, var(--color-fd-foreground) 85%, var(--color-fd-primary));
+  border: 1px solid color-mix(in srgb, var(--color-fd-primary) 18%, transparent);
+  border-radius: 0.375rem;
+  padding: 0.1rem 0.35rem;
+  font-weight: 500;
+  font-size: 0.88em;
+}
+
+/* Prose links — warmer underline */
+article a {
+  text-decoration-color: color-mix(in srgb, var(--color-fd-primary) 40%, transparent);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 150ms;
+}
+article a:hover {
+  text-decoration-color: var(--color-fd-primary);
+}
