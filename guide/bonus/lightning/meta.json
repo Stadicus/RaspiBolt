@@ -1,0 +1,25 @@
+{
+  "title": "Lightning bonus",
+  "pages": [
+    "index",
+    "thunderhub",
+    "lndg",
+    "lntop",
+    "lnbalance",
+    "lnchannels",
+    "ambossping",
+    "balance-of-satoshis",
+    "charge-lnd",
+    "circuit-breaker",
+    "rebalance-lnd",
+    "regolancer",
+    "cln",
+    "lnbits",
+    "clboss",
+    "lightning-terminal",
+    "zap-desktop",
+    "zap-ios",
+    "remote-lncli"
+  ],
+  "defaultOpen": false
+}

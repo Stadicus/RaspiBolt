@@ -1,0 +1,83 @@
+---
+title: Backstory
+description: Why this guide exists, who built it, and what "self-sovereign" really means.
+---
+
+Hey, I'm [Stadicus](https://stadicus.com). I wrote the first version of
+this guide back in 2017, when Lightning was still pretty obscure, the
+mainnet wasn't even live yet, and running a node meant stringing
+together a hundred half-documented commands you hoped someone on
+Reddit had gotten right. I love to tinker and build things, so I
+wrote down what worked, put it on Medium, and moved it to GitHub
+when it outgrew a single blog post.
+
+It hasn't been "my own" guide for a long time. Dozens of contributors
+have shaped it over the years. RaspiBolt is a community project now,
+and the community keeps it honest.
+
+## Why Bitcoin? Why a node?
+
+Bitcoin is doing something quietly revolutionary: it lets you hold
+money that nobody else can freeze, inflate, or quietly reassign.
+That only works if **the network stays decentralised**, if enough
+of us run our own full nodes to enforce the rules rather than
+trusting somebody else to tell us what the rules are.
+
+A full node is, in plain terms, your own personal goldsmith. When a
+payment arrives, your node verifies it from first principles: the
+signatures, the scripts, the history, the supply cap. No trust, no
+middleman, no API key away from being cut off. If Bitcoin is digital
+gold, a full node is the set of scales you own and trust.
+
+That kind of independence shouldn't be reserved for people with a
+rack in a datacentre. A Raspberry Pi in the corner of your office,
+quietly validating every block that's ever been mined, is a
+delightfully democratic piece of infrastructure.
+
+## Why Lightning?
+
+Bitcoin's base layer is deliberately slow and deliberately expensive.
+That's a feature, not a bug, a genuinely decentralised blockchain
+is a scarce resource, and it cannot scale to every coffee purchase
+on the planet without breaking exactly the property that makes it
+valuable.
+
+This is why the **Lightning Network** exists. It's a second layer
+built on top of Bitcoin that settles small payments instantly,
+routes them between strangers via a mesh of payment channels, and
+falls back to the base chain only when it has to. It sounds almost
+too good to be true. The technology is solid, well-researched, and
+stays faithful to the open-source, cypherpunk roots of Bitcoin
+itself.
+
+Running your own Lightning node means you're not just a spectator,
+you're part of the network that makes instant, low-fee Bitcoin
+payments possible.
+
+## Why RaspiBolt?
+
+Through many iterations, I've arrived at a setup I think is worth
+sharing. It's opinionated, I picked the tools that are reliable,
+well-maintained, and possible to reason about. I'm not a systems
+specialist, so if you spot improvements, please say so. The GitHub
+issues list is where the guide gets better.
+
+## The good old days
+
+The original goal of the RaspiBolt guide, back in 2017, was simply
+buying a [Blockaccino](https://vimeo.com/252693058). I used the
+[Eclair](https://github.com/ACINQ/eclair) Lightning implementation
+on testnet, because mainnet wasn't running yet. Oh, how time flies.
+
+## A community project
+
+Thanks to every contributor who has filed an issue, opened a pull
+request, tested a fix on their own Pi, or helped a newcomer in the
+[Telegram](https://t.me/raspibolt) group. Thanks to everyone who
+cares about Bitcoin enough to run their own node, and to understand
+what it's actually doing.
+
+This guide is for you.
+
+Curious how the pieces fit together before you start? See
+[Architecture](/docs/architecture) for the 10,000-foot view.

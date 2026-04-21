@@ -1,0 +1,23 @@
+{
+  "title": "Bitcoin bonus",
+  "pages": [
+    "index",
+    "mempool",
+    "UTXOracle",
+    "white-paper",
+    "bisq",
+    "bitboxapp",
+    "electrum-wallet-desktop",
+    "specter-desktop",
+    "sparrow-terminal",
+    "dojo",
+    "electrum-personal-server",
+    "fulcrum",
+    "joinmarket",
+    "Jam",
+    "i2p",
+    "safu-ninja",
+    "testnet"
+  ],
+  "defaultOpen": false
+}

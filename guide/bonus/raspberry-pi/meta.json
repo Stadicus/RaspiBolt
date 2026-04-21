@@ -1,0 +1,17 @@
+{
+  "title": "Raspberry Pi bonus",
+  "pages": [
+    "index",
+    "system-overview",
+    "aliases",
+    "command-line",
+    "homer",
+    "go",
+    "boot-from-microsd-card",
+    "upgrade-external-drive",
+    "odroid-setup",
+    "trezor-agent",
+    "ups-nut"
+  ],
+  "defaultOpen": false
+}
