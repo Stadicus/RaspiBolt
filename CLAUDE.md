@@ -195,7 +195,9 @@ Optimize PNG/JPG to <300 KB before committing (use `oxipng -o 4 file.png` or an 
 
 Before pushing, verify:
 
-- [ ] `pre-commit run --all-files`: all blocking hooks pass
+- [ ] `pre-commit run --all-files`: blocking hooks pass (includes Prettier auto-format)
+- [ ] `npm run lint`: ESLint clean (CI-only hook, not in pre-commit)
+- [ ] `npm run types:check`: TypeScript clean
 - [ ] `npm run build`: site builds without errors
 - [ ] All version references use `%versions.X%` / `%files.X%` / `%urls.X%` tokens
 - [ ] Internal links use `/docs/...` paths (no file extensions)

@@ -52,7 +52,15 @@ repos:
         files: '^\.github/workflows/.*\.ya?ml$'
         pass_filenames: false
 
-      # ── Prose style (content only, advisory — does not block commit) ───────
+      # ── Formatting (TS/TSX/JS/JSON/CSS/YAML; .prettierignore filters MDX) ──
+      - id: prettier
+        name: 'Format (prettier)'
+        language: system
+        entry: npx --no-install prettier --write --ignore-unknown
+        files: '\.(ts|tsx|js|jsx|mjs|cjs|json|ya?ml|css)$'
+        exclude: '^(package-lock\.json|node_modules/|\.source/|out/|\.next/)'
+
+      # ── Prose style (content only, advisory, does not block commit) ───────
       - id: vale
         name: 'Prose (vale)'
         language: system
