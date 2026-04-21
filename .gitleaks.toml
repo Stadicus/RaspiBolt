@@ -1,0 +1,22 @@
+# gitleaks configuration for RaspiBolt
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+title = "RaspiBolt Gitleaks Config"
+
+[extend]
+# Use the default gitleaks ruleset as base
+useDefault = true
+
+[allowlist]
+description = "Known safe patterns in this repo"
+regexTarget = "line"
+regexes = [
+  # Example Bitcoin addresses / keys used as documentation examples
+  '''bcrt1q[a-z0-9]{38,58}''',
+  # GitHub Actions variable syntax — not real secrets
+  '''\$\{\{\s*secrets\.[A-Z_]+\s*\}\}''',
+]
+paths = [
+  # Legacy Jekyll content kept as reference — not deployed
+  '''guide/.+\.md$''',
+]

@@ -1,0 +1,5 @@
+# Rejected terms — flag as errors
+onchain
+offchain
+fullnode
+plug-in

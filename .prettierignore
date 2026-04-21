@@ -1,0 +1,27 @@
+# Build output
+.next/
+.source/
+out/
+build/
+coverage/
+node_modules/
+
+# Generated
+next-env.d.ts
+package-lock.json
+
+# Content — markdownlint handles wrapping; Prettier mangles MDX Callouts.
+guide/**/*.mdx
+guide/**/*.md
+CLAUDE.md
+README.md
+.github/ISSUE_TEMPLATE/**
+
+# External configs
+resources/**
+images/**
+testing/.vagrant/
+.vale/styles/**
+
+# Claude session data
+.claude/

@@ -1,0 +1,10 @@
+extends: existence
+message: "Add a space between number and unit: '%s' → e.g. '500 GB'"
+level: suggestion
+tokens:
+  - '\b\d+GB\b'
+  - '\b\d+MB\b'
+  - '\b\d+KB\b'
+  - '\b\d+TB\b'
+  - '\b\d+GiB\b'
+  - '\b\d+MiB\b'

@@ -1,0 +1,45 @@
+version: 2
+
+updates:
+  # npm deps — group patch/minor updates into a single weekly PR.
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    target-branch: 'feature/v4-rewrite'
+    groups:
+      next-ecosystem:
+        patterns:
+          - 'next'
+          - 'eslint-config-next'
+          - '@types/react*'
+          - 'react'
+          - 'react-dom'
+      fumadocs:
+        patterns:
+          - 'fumadocs-*'
+          - '@orama/*'
+      dev-tooling:
+        patterns:
+          - 'eslint'
+          - 'eslint-*'
+          - '@typescript-eslint/*'
+          - 'prettier'
+          - 'prettier-*'
+          - 'vitest'
+          - 'typescript'
+          - '@types/*'
+      minor-and-patch:
+        update-types:
+          - 'minor'
+          - 'patch'
+
+  # GitHub Actions — keep action versions current.
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    target-branch: 'feature/v4-rewrite'
+    open-pull-requests-limit: 3

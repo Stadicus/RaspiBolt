@@ -1,0 +1,61 @@
+# Pre-commit hooks — run via: pre-commit run --all-files
+# Install: bash scripts/setup-dev.sh
+# All hooks use system-installed binaries (see scripts/setup-dev.sh for install instructions)
+
+repos:
+  - repo: local
+    hooks:
+      # ── Secrets ────────────────────────────────────────────────────────────
+      - id: gitleaks
+        name: 'Secrets (gitleaks)'
+        language: system
+        entry: gitleaks protect --staged --config=.gitleaks.toml --redact
+        pass_filenames: false
+        always_run: true
+
+      # ── Shell scripts ──────────────────────────────────────────────────────
+      - id: shellcheck
+        name: 'Shell (shellcheck)'
+        language: system
+        entry: shellcheck --severity=warning
+        types: [shell]
+        exclude: '^resources/'
+
+      # ── Spelling ───────────────────────────────────────────────────────────
+      - id: typos
+        name: 'Spelling (typos)'
+        language: system
+        entry: typos
+        types: [text]
+        exclude: '^(resources/|images/|node_modules/|\.source/|out/|\.next/)'
+
+      # ── Markdown (.mdx content only) ───────────────────────────────────────
+      - id: markdownlint-cli2
+        name: 'Markdown (markdownlint)'
+        language: system
+        entry: markdownlint-cli2
+        files: '^guide/.*\.mdx$'
+
+      # ── YAML ───────────────────────────────────────────────────────────────
+      - id: yamllint
+        name: 'YAML (yamllint)'
+        language: system
+        entry: yamllint --strict
+        types: [yaml]
+        exclude: '^(\.github/workflows/stale\.yml|node_modules/|\.source/)'
+
+      # ── GitHub Actions ─────────────────────────────────────────────────────
+      - id: actionlint
+        name: 'Actions (actionlint)'
+        language: system
+        entry: actionlint -ignore 'SC2148'
+        files: '^\.github/workflows/.*\.ya?ml$'
+        pass_filenames: false
+
+      # ── Prose style (content only, advisory — does not block commit) ───────
+      - id: vale
+        name: 'Prose (vale)'
+        language: system
+        entry: bash -c 'vale "$@"; exit 0' --
+        files: '^guide/.*\.mdx$'
+        exclude: '^guide/(bonus|troubleshooting|faq)'

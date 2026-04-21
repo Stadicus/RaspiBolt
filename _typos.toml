@@ -1,0 +1,39 @@
+# typos configuration — https://github.com/crate-ci/typos
+# False positive allowlist for Bitcoin/Lightning technical terms
+
+[default.extend-words]
+# Bitcoin ecosystem
+"bitcoind"  = "bitcoind"
+"lnd"       = "lnd"
+"lncli"     = "lncli"
+"electrs"   = "electrs"
+"uint"      = "uint"    # Rust/Go type
+"Uint"      = "Uint"
+
+# Common abbreviations in configs
+"fo"        = "fo"      # e.g. "info" suffix
+"ot"        = "ot"
+
+# Networking
+"UPnP"      = "UPnP"    # Universal Plug and Play
+"Pn"        = "Pn"      # camelCase fragment of UPnP
+
+# Next.js / Fumadocs internals
+"nd"        = "nd"      # Fumadocs DOM ID prefix
+
+[files]
+extend-exclude = [
+  "resources/**",
+  "images/**",
+  "node_modules/**",
+  ".source/**",
+  ".next/**",
+  "out/**",
+  "*.png",
+  "*.jpg",
+  "*.jpeg",
+  "*.gif",
+  "*.ico",
+  "*.pdf",
+  "package-lock.json",
+]

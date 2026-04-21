@@ -1,0 +1,19 @@
+extends: substitution
+message: "Use '%s' instead of '%s' (capitalization)"
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  # Bitcoin ecosystem
+  "bitcoin network": "Bitcoin Network"
+  "bitcoin core": "Bitcoin Core"
+  "lightning network": "Lightning Network"
+  "raspberry pi": "Raspberry Pi"
+  "raspibolt": "RaspiBolt"
+
+  # Services / projects (capitalized in prose, lowercase only as binary names)
+  "(?i)\\btor network\\b": "Tor network"
+  "(?i)\\bjoinmarket\\b": "JoinMarket"
+  "(?i)\\bsparrow wallet\\b": "Sparrow Wallet"
+  "(?i)\\bride the lightning\\b": "Ride The Lightning"

@@ -1,0 +1,13 @@
+extends: substitution
+message: "Prefer '%s' over '%s' in RaspiBolt documentation"
+level: suggestion
+action:
+  name: replace
+swap:
+  # Consistency with existing guide style
+  "execute the following": "Run the following"
+  "type the following": "Enter the following"
+  "hardware-wallet": "hardware wallet"
+  "HW wallet": "hardware wallet"
+  "full node": "full node"         # not "fullnode" or "Full Node"
+  "Full Node": "full node"

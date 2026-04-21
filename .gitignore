@@ -1,4 +1,35 @@
-.sass-cache
-_site
-cast/tmp*
+# Claude Code — session data, settings, memory (never commit)
+.claude/
+
+# Next.js / Fumadocs build artifacts
+/node_modules/
+/.next/
+/.source/
+/out/
+/coverage/
+next-env.d.ts
+*.tsbuildinfo
+.vercel/
+
+# Environment & secrets
+.env
+.env.*
+*.env
+secrets.*
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Editor
 *.xcf
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Vagrant
+testing/.vagrant/
+
+# Temp
+cast/tmp*

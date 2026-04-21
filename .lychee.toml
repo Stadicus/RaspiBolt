@@ -1,0 +1,20 @@
+# Lychee link checker — runs against the built site in out/ after a render.
+# Keeps external-link checking off for now (flaky rate limits); enable when
+# content stabilises by flipping offline = false.
+
+offline = true
+include_fragments = false
+
+exclude = [
+  # Next.js asset paths
+  "^/_next/",
+  "^_next/",
+  # GitHub edit/issue template links (contain placeholders)
+  "github\\.com/.*/edit/",
+  "github\\.com/.*/issues/new",
+  # localhost references in examples
+  "^http://localhost",
+  "^http://127\\.0\\.0\\.1",
+  # RaspiBolt local hostname used in the guide
+  "raspibolt\\.local",
+]

@@ -1,0 +1,83 @@
+# Accepted technical terms — single canonical prose form per entry.
+# Code-only terms (bitcoind, lncli, etc.) appear in code scopes and are ignored.
+
+# Bitcoin / node
+Bitcoin
+Blockchain
+LND
+Electrs
+RTL
+Bech32
+SegWit
+UTXO
+UTXOs
+HTLC
+HTLCs
+RPC
+PSBT
+xpub
+zpub
+mempool
+mainnet
+testnet
+regtest
+signet
+timelock
+multisig
+multisignature
+preimage
+hashlock
+CLTV
+CSV
+
+# Lightning
+CLN
+Eclair
+watchtower
+pathfinding
+BOLT
+BOLTs
+keysend
+MPP
+AMP
+hodl
+
+# Cryptography
+secp256k1
+SHA256
+SHA-256
+ECDSA
+Schnorr
+Taproot
+
+# System / Linux
+systemd
+journalctl
+UFW
+fail2ban
+SSH
+GPG
+PGP
+sudoer
+crontab
+tmpfs
+fstab
+sysctl
+ulimit
+NOPASSWD
+logrotate
+
+# Networking / Tor
+Tor
+SOCKS5
+clearnet
+IPv4
+IPv6
+FQDN
+
+# Software
+Vagrantfile
+Quarto
+
+# RaspiBolt
+RaspiBolt

@@ -1,0 +1,106 @@
+name: Lint
+
+on:
+  push:
+    branches: [feature/v4-rewrite]
+    paths:
+      - 'guide/**'
+      - 'src/**'
+      - 'lib/**'
+      - 'scripts/**'
+      - 'testing/**'
+      - '.github/workflows/**'
+      - '.pre-commit-config.yaml'
+      - '.markdownlint.yaml'
+      - '.yamllint.yaml'
+      - '_typos.toml'
+      - '.vale.ini'
+      - '.vale/**'
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install markdownlint-cli2
+        run: npm install -g markdownlint-cli2
+
+      - name: Install yamllint
+        run: pip install yamllint==1.38.0
+
+      - name: Install typos
+        run: |
+          curl -sSfL \
+            "https://github.com/crate-ci/typos/releases/download/v1.45.1/typos-v1.45.1-x86_64-unknown-linux-musl.tar.gz" \
+            | tar xz -C /usr/local/bin ./typos
+
+      - name: Install actionlint
+        run: |
+          curl -sSfL \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz" \
+            | tar xz -C /usr/local/bin actionlint
+
+      - name: Install vale
+        run: |
+          curl -sSfL \
+            "https://github.com/errata-ai/vale/releases/download/v3.14.1/vale_3.14.1_Linux_64-bit.tar.gz" \
+            | tar xz -C /usr/local/bin vale
+
+      - name: shellcheck
+        run: |
+          find scripts testing -name "*.sh" -print0 | xargs -0 shellcheck --severity=warning
+
+      - name: typos
+        run: |
+          typos \
+            --config _typos.toml \
+            --exclude 'resources/**' \
+            --exclude 'images/**' \
+            --exclude 'node_modules/**' \
+            --exclude '.source/**' \
+            --exclude 'out/**'
+
+      - name: markdownlint
+        run: markdownlint-cli2 "guide/**/*.mdx"
+
+      - name: yamllint
+        run: |
+          mapfile -t yaml_files < <(find . \( -name "*.yml" -o -name "*.yaml" \) \
+            | grep -v '.github/workflows/stale.yml' \
+            | grep -v node_modules \
+            | grep -v '.next' \
+            | grep -v '.source' \
+            | grep -v out)
+          yamllint --strict --config-file .yamllint.yaml "${yaml_files[@]}"
+
+      - name: actionlint
+        run: actionlint -ignore 'SC2148' .github/workflows/*.yml
+
+      - name: TypeScript check
+        run: npm run types:check
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier
+        run: npm run format:check
+
+      - name: Build
+        run: npm run build
+
+      - name: vale (advisory)
+        run: vale --no-exit guide/**/*.mdx || true

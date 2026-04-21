@@ -1,0 +1,21 @@
+# yamllint configuration
+extends: default
+
+rules:
+  line-length:
+    max: 160
+    level: warning
+
+  # Quarto _quarto.yml uses truthy values in comments
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off']
+    level: warning
+
+  # Allow both --- and ... document markers
+  document-start:
+    present: false
+
+  # Indentation: 2 spaces
+  indentation:
+    spaces: 2
+    indent-sequences: true

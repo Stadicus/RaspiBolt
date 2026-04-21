@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Pre-commit hook: scan staged changes for secrets with gitleaks
+
+if ! command -v gitleaks &>/dev/null; then
+  echo "[pre-commit] gitleaks not found — skipping secret scan (install: ~/.local/bin/gitleaks)"
+  exit 0
+fi
+
+gitleaks protect --staged --config="$(git rev-parse --show-toplevel)/.gitleaks.toml" --redact
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+  echo ""
+  echo "[pre-commit] gitleaks found potential secrets. Commit blocked."
+  echo "  To inspect: gitleaks protect --staged --verbose"
+  echo "  To allow a false positive: add to .gitleaks.toml [allowlist]"
+  exit 1
+fi

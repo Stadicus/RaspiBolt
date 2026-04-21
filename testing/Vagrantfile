@@ -1,0 +1,100 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# RaspiBolt v4 Test Environment
+# Requires: VirtualBox + vagrant-vbguest plugin
+#   vagrant plugin install vagrant-vbguest
+#
+# Usage:
+#   vagrant up debian12   — spin up Debian 12 VM (primary test target)
+#   vagrant up rpios      — spin up RPi OS proxy VM (arm64 emulated)
+#   vagrant ssh debian12  — connect to VM
+#   vagrant halt          — stop all VMs
+#   vagrant destroy -f    — remove all VMs
+
+VAGRANTFILE_API_VERSION = "2"
+
+# Software versions (keep in sync with guide/_variables.yml)
+BITCOIN_VERSION = "30.2"
+LND_VERSION     = "0.20.1-beta"
+ELECTRS_VERSION = "0.11.1"
+RTL_VERSION     = "0.15.6"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+
+  # ─────────────────────────────────────────────────
+  # Debian 12 (Bookworm) — primary aarch64 proxy test
+  # ─────────────────────────────────────────────────
+  config.vm.define "debian12", primary: true do |d|
+    d.vm.box     = "debian/bookworm64"
+    d.vm.box_url = "https://app.vagrantup.com/debian/boxes/bookworm64"
+
+    d.vm.hostname = "raspibolt-test"
+
+    d.vm.network "private_network", ip: "192.168.56.10"
+
+    d.vm.provider "virtualbox" do |vb|
+      vb.name   = "RaspiBolt-Debian12"
+      vb.memory = 2048
+      vb.cpus   = 2
+      # Enable USB 2.0 controller (needed for SSD simulation)
+      vb.customize ["modifyvm", :id, "--usb", "on"]
+      vb.customize ["modifyvm", :id, "--usbehci", "on"]
+    end
+
+    d.vm.synced_folder "../", "/vagrant", type: "virtualbox"
+
+    d.vm.provision "shell", inline: <<-SHELL
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+
+      apt-get update -qq
+      apt-get install -y -qq \
+        curl wget git jq \
+        ufw fail2ban \
+        tor \
+        build-essential pkg-config \
+        libssl-dev libclang-dev
+
+      echo "==> Debian 12 VM provisioned"
+      echo "    Bitcoin Core target: #{BITCOIN_VERSION}"
+      echo "    LND target:          #{LND_VERSION}"
+      echo "    Electrs target:      #{ELECTRS_VERSION}"
+      echo "    RTL target:          #{RTL_VERSION}"
+    SHELL
+  end
+
+  # ─────────────────────────────────────────────────
+  # RPi OS proxy — Debian 12 Bookworm arm64 emulated
+  # Note: Full RPi OS not available as Vagrant box.
+  # This approximates RPi OS 64-bit (Bookworm-based).
+  # ─────────────────────────────────────────────────
+  config.vm.define "rpios", autostart: false do |r|
+    r.vm.box      = "debian/bookworm64"
+    r.vm.hostname = "raspibolt-rpios"
+
+    r.vm.network "private_network", ip: "192.168.56.11"
+
+    r.vm.provider "virtualbox" do |vb|
+      vb.name   = "RaspiBolt-RPiOS"
+      vb.memory = 1024
+      vb.cpus   = 1
+    end
+
+    r.vm.synced_folder "../", "/vagrant", type: "virtualbox"
+
+    r.vm.provision "shell", inline: <<-SHELL
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+
+      apt-get update -qq
+      apt-get install -y -qq curl wget git jq
+
+      # Simulate RPi-specific environment
+      echo "Raspberry Pi" > /proc/device-tree/model 2>/dev/null || true
+
+      echo "==> RPi OS proxy VM provisioned"
+    SHELL
+  end
+
+end

@@ -1,0 +1,14 @@
+extends: substitution
+message: "Use '%s' instead of '%s'"
+level: suggestion
+action:
+  name: replace
+swap:
+  "onchain": "on-chain"
+  "on chain": "on-chain"
+  "off chain": "off-chain"
+  "offchain": "off-chain"
+  "plug-in": "plugin"
+  "plug in": "plugin"
+  "set up(?= the| your| a )": "set up"   # verb form stays two words
+  "setup(?= the| your| a )": "set up"    # "setup" as verb → "set up"

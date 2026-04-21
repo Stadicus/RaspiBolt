@@ -1,0 +1,44 @@
+# markdownlint-cli2 configuration
+# Applies to .mdx files (MDX — Markdown + React)
+
+default: true
+
+# Line length — relaxed for documentation (URLs, code blocks)
+MD013:
+  line_length: 160
+  code_blocks: false
+  tables: false
+
+# MDX allows arbitrary React components — allow the ones the guide uses
+MD033:
+  allowed_elements:
+    - br
+    - details
+    - summary
+    - kbd
+    - Callout
+    - Cards
+    - Card
+    - Tabs
+    - Tab
+    - Steps
+    - Step
+    - Files
+    - File
+    - Folder
+    - TypeTable
+    - Accordion
+    - Accordions
+
+# First line doesn't need to be h1 (YAML frontmatter provides title)
+MD041: false
+
+# Allow duplicate headings across files
+MD024: false
+
+# Allow trailing punctuation in headings
+MD026: false
+
+# Ordered list style — allow 1. 1. 1. (let renderer number)
+MD029:
+  style: 'ordered'
