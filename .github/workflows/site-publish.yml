@@ -1,12 +1,13 @@
 name: Publish site (v4)
 
-# Fires on pushes to master (post-merge auto-deploy) and to
-# feature/v4-rewrite (staging preview during ongoing work). Both
-# write to the same gh-pages branch, so the live site always
-# reflects whatever hit the target branch last.
+# Fires on pushes to feature/v4-rewrite (direct commits and merged
+# PRs land as push events on the target branch, so merging a
+# sub-branch into feature/v4-rewrite automatically triggers a
+# deploy). Master is intentionally excluded to keep the v3 Jekyll
+# site live on raspibolt.org untouched.
 on:
   push:
-    branches: [master, feature/v4-rewrite]
+    branches: [feature/v4-rewrite]
     paths:
       - 'guide/**'
       - 'src/**'
