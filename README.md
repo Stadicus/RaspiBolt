@@ -1,4 +1,151 @@
-### The RaspiBolt Guide is now available on GitHub Pages:
-https://raspibolt.github.io/raspibolt/
+# RaspiBolt
 
-This repository contains all sources and is used for Issue tracking.
+Build your own self-sovereign Bitcoin and Lightning node on a Raspberry Pi.
+
+- **Published guide:** <https://raspibolt.org>
+- **v4 staging preview:** <https://stadicus.github.io/RaspiBolt/> *(auto-deploys from `feature/v4-rewrite`)*
+- **Open decisions & deferred work:** [`TODO.md`](./TODO.md)
+
+---
+
+## Contributing content
+
+All guide content lives in [`guide/`](./guide) as `.mdx` files — standard Markdown with a few React components (Callouts, Cards). You can edit any page directly in the GitHub UI. No Next.js knowledge required.
+
+```
+guide/
+├── meta.json               Root sidebar order
+├── index.mdx               /docs landing page
+├── raspberry-pi/
+│   ├── meta.json           Section page order
+│   ├── preparations.mdx
+│   └── …
+├── bitcoin/
+├── lightning/
+└── bonus/
+```
+
+### Writing conventions
+
+- **Versions and download URLs** use tokens like `%versions.bitcoin_core%`, `%files.bitcoinArchive%`, `%urls.bitcoinDownload%`. Definitions live in [`lib/versions.json`](./lib/versions.json) (raw versions) and [`lib/versions.ts`](./lib/versions.ts) (derived filenames + URLs). A remark plugin resolves them at build time, even inside code fences.
+- **Callouts** use Fumadocs' `<Callout type="info|warn|success|error">…</Callout>`.
+- **Internal links** use bare paths: `/docs/raspberry-pi/preparations` — no file extension.
+- **Code blocks** always specify a language (`bash`, `text`, `ini`, etc.) and group a sequence of commands into one block so the copy button grabs the whole lot.
+
+See [`CLAUDE.md`](./CLAUDE.md) for the full voice and syntax guidelines.
+
+---
+
+## Local development
+
+### Prerequisites
+
+- Linux / macOS / WSL
+- Node.js ≥ 20
+- Python 3.10+ (only for pre-commit + yamllint)
+- Git
+
+### First-time setup
+
+```bash
+git clone https://github.com/Stadicus/RaspiBolt.git
+cd RaspiBolt
+bash scripts/setup-dev.sh
+```
+
+This installs dev tools to `~/.local/bin` (no root required), runs `npm ci`, and registers the pre-commit hook.
+
+Add `~/.local/bin` to your PATH if it isn't already:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
+
+### Preview the site
+
+```bash
+npm run dev
+```
+
+Opens a live-reload Next.js dev server at <http://localhost:3000>. The site rebuilds on every save.
+
+### Build a production bundle
+
+```bash
+npm run build         # static export to out/
+npm run start         # serve out/ locally
+```
+
+### Quality checks
+
+Run the full suite before committing (all of these run in CI too):
+
+```bash
+npm run lint          # ESLint
+npm run types:check   # TypeScript (fumadocs-mdx → next typegen → tsc)
+npm run format:check  # Prettier
+npm test              # vitest (remark plugin tests)
+npm run build         # catches MDX syntax issues
+
+pre-commit run --all-files  # gitleaks, typos, markdownlint, yamllint, actionlint, vale
+```
+
+Individual pre-commit hooks:
+
+```bash
+pre-commit run markdownlint-cli2
+pre-commit run vale      # prose style (advisory, never blocks)
+```
+
+### Git hooks
+
+Hooks are managed by [pre-commit](https://pre-commit.com). See [`.pre-commit-config.yaml`](./.pre-commit-config.yaml).
+
+| Hook | Blocking | What it checks |
+|------|----------|----------------|
+| gitleaks | ✓ | Secrets and credentials |
+| shellcheck | ✓ | Shell script issues |
+| typos | ✓ | Spelling |
+| markdownlint | ✓ | Markdown formatting on `.mdx` |
+| yamllint | ✓ | YAML syntax |
+| actionlint | ✓ | GitHub Actions workflows |
+| vale | ✗ (advisory) | Prose style and terminology |
+
+Vale rules are in [`.vale/styles/RaspiBolt/`](./.vale/styles/RaspiBolt); accepted technical vocabulary is in [`.vale/styles/config/vocabularies/RaspiBolt/accept.txt`](./.vale/styles/config/vocabularies/RaspiBolt/accept.txt).
+
+---
+
+## Stack
+
+- **Content:** [MDX](https://mdxjs.com) (Markdown + React components) in [`guide/`](./guide)
+- **Framework:** [Next.js 16](https://nextjs.org) with static export
+- **Docs theme:** [Fumadocs](https://fumadocs.dev)
+- **Styling:** Tailwind CSS 4
+- **Deployment:** GitHub Pages (via [`.github/workflows/site-publish.yml`](./.github/workflows/site-publish.yml))
+- **Variable resolution:** Custom [remark plugin](./lib/remark-variables.ts)
+
+```
+src/                  Next.js app (layouts, routes, components)
+lib/
+  versions.json       Software versions — edit here, site re-renders
+  versions.ts         Derived filenames + URLs
+  remark-variables.ts Build-time %token% replacement
+testing/
+  Vagrantfile         Debian 12 + RPi OS test VMs
+  test-runner.sh      Test suite (reads lib/versions.json)
+```
+
+### Software versions (v4 target)
+
+Edit [`lib/versions.json`](./lib/versions.json) to update — every page re-renders on next build.
+
+| Software | Version |
+|----------|---------|
+| Bitcoin Core | 30.2 |
+| LND | 0.20.1-beta |
+| Electrs | 0.11.1 |
+| RTL | 0.15.6 |
+
+---
+
+*v4 rewrite in progress on `feature/v4-rewrite`. Current stable guide: <https://raspibolt.org>*
