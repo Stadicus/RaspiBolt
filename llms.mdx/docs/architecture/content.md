@@ -27,10 +27,13 @@ follow. This is strictly orientation.
     C[Caddy :443]
     ST[stunnel :50002]
     T[Tor :9050 and :9051]
+    TS[Tailscale 100.x.y.z]
   end
 
-  subgraph lan[Your LAN]
+  subgraph you[Your devices, LAN or tailnet]
     W[Sparrow or Electrum]
+    H[Browser for RTL and Explorer]
+    S[SSH client]
   end
 
   B -- SOCKS --> T
@@ -43,8 +46,10 @@ follow. This is strictly orientation.
   L -- ZMQ and RPC --> B
   BE -- RPC --> B
   RTL -- gRPC :10009 --> L
+  H -- HTTPS --> C
   C --> BE
-  C --> RTL"
+  C --> RTL
+  S -- SSH --> TS"
 />
 
 **Reading the arrows.** A one-way arrow is the direction a request
@@ -53,8 +58,9 @@ the channel. **RPC** is JSON-over-HTTP to Bitcoin Core. **gRPC** is
 LND's binary protocol. **ZMQ** is Bitcoin Core pushing new-block and
 new-transaction events to LND without polling. **SOCKS** is Tor's
 way of letting an application route its outbound traffic through the
-onion network. **TLS** is Electrum over stunnel, and HTTPS is
-everything going through Caddy.
+onion network. **TLS** is Electrum over stunnel, HTTPS is everything
+going through Caddy, and SSH is how you reach the Pi (directly on
+the LAN, or through Tailscale from anywhere else).
 
 **Main takeaway:** Bitcoin Core is the only service that actually
 validates the chain. Everything else is a consumer of that one

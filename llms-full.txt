@@ -27,10 +27,13 @@ follow. This is strictly orientation.
     C[Caddy :443]
     ST[stunnel :50002]
     T[Tor :9050 and :9051]
+    TS[Tailscale 100.x.y.z]
   end
 
-  subgraph lan[Your LAN]
+  subgraph you[Your devices, LAN or tailnet]
     W[Sparrow or Electrum]
+    H[Browser for RTL and Explorer]
+    S[SSH client]
   end
 
   B -- SOCKS --> T
@@ -43,8 +46,10 @@ follow. This is strictly orientation.
   L -- ZMQ and RPC --> B
   BE -- RPC --> B
   RTL -- gRPC :10009 --> L
+  H -- HTTPS --> C
   C --> BE
-  C --> RTL"
+  C --> RTL
+  S -- SSH --> TS"
 />
 
 **Reading the arrows.** A one-way arrow is the direction a request
@@ -53,8 +58,9 @@ the channel. **RPC** is JSON-over-HTTP to Bitcoin Core. **gRPC** is
 LND's binary protocol. **ZMQ** is Bitcoin Core pushing new-block and
 new-transaction events to LND without polling. **SOCKS** is Tor's
 way of letting an application route its outbound traffic through the
-onion network. **TLS** is Electrum over stunnel, and HTTPS is
-everything going through Caddy.
+onion network. **TLS** is Electrum over stunnel, HTTPS is everything
+going through Caddy, and SSH is how you reach the Pi (directly on
+the LAN, or through Tailscale from anywhere else).
 
 **Main takeaway:** Bitcoin Core is the only service that actually
 validates the chain. Everything else is a consumer of that one
@@ -5103,236 +5109,6 @@ demonstration that the foundational document of Bitcoin is, quite
 literally, part of Bitcoin itself.
 
 
-# Aliases (/docs/bonus/raspberry-pi/aliases)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/aliases.md)
-  while we port it over.
-</Callout>
-
-Aliases are shortcuts for long or frequently used shell commands.
-The guide installs a curated `.bash_aliases` file so `admin` gets
-concise shortcuts for inspecting Bitcoin Core, LND, system logs, and
-service status, saving you the muscle memory of typing the full
-command every time.
-
-
-# Boot from microSD card (/docs/bonus/raspberry-pi/boot-from-microsd-card)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/boot-from-microsd-card.md)
-  while we port it over.
-</Callout>
-
-Not every Raspberry Pi can boot directly from an external drive. If
-yours can't, or your USB-SATA enclosure is picky, this guide sets
-up a split configuration: boot the OS from a microSD card, then mount
-the external drive for all the application and blockchain data.
-
-
-# Pimp the command line (/docs/bonus/raspberry-pi/command-line)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/command-line.md)
-  while we port it over.
-</Callout>
-
-A small quality-of-life tweak: make your shell prompt shine with a
-golden Bitcoin symbol, enable color output for `ls`, and nudge the
-defaults so the terminal is easier on the eyes. Purely cosmetic, but
-it takes two minutes and you'll appreciate it every time you log
-back in.
-
-
-# Install Go (/docs/bonus/raspberry-pi/go)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/go.md)
-  while we port it over.
-</Callout>
-
-A few RaspiBolt bonus tools (regolancer and some monitoring
-helpers) are written in [Go](https://go.dev). This short guide handles
-installing, upgrading, and removing the Go toolchain on the Pi, so
-you can build those tools yourself without polluting the rest of
-the system.
-
-
-# Homer (/docs/bonus/raspberry-pi/homer)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/homer.md)
-  while we port it over.
-</Callout>
-
-[Homer](https://github.com/bastienwirtz/homer) is a simple
-browser-based dashboard for your self-hosted services. You list your
-web tools in a YAML file and Homer renders a clean, bookmarkable
-homepage, one click into RTL, ThunderHub, Mempool, BTC RPC
-Explorer, or whatever else you've spun up.
-
-
-# Raspberry Pi bonus (/docs/bonus/raspberry-pi)
-
-
-
-This section covers the host system rather than the Bitcoin or
-Lightning stack: shell tweaks, dashboards, alternative boot and
-hardware configurations, UPS integration, and hardware-wallet-based
-SSH. None of it is required for a working node, it's what you
-reach for when you're ready to polish the setup.
-
-<Callout type="info" title="Content being migrated">
-  The bonus pages are still being rewritten for v4. Each page links to
-  the v3 source while we work through the backlog.
-</Callout>
-
-## What's in this section [#whats-in-this-section]
-
-<Cards>
-  <Card title="System overview" href="/docs/bonus/raspberry-pi/system-overview">
-    Login dashboard with node and system status.
-  </Card>
-
-  <Card title="Aliases" href="/docs/bonus/raspberry-pi/aliases">
-    Shell shortcuts for common node-management commands.
-  </Card>
-
-  <Card title="Pimp the command line" href="/docs/bonus/raspberry-pi/command-line">
-    Colorful prompt and nicer ls defaults.
-  </Card>
-
-  <Card title="Homer" href="/docs/bonus/raspberry-pi/homer">
-    Browser dashboard with links to all your web services.
-  </Card>
-
-  <Card title="Install Go" href="/docs/bonus/raspberry-pi/go">
-    Install, update, or uninstall the Go toolchain.
-  </Card>
-
-  <Card title="Boot from microSD" href="/docs/bonus/raspberry-pi/boot-from-microsd-card">
-    Boot from microSD and use the external drive for data.
-  </Card>
-
-  <Card title="Upgrade external drive" href="/docs/bonus/raspberry-pi/upgrade-external-drive">
-    Migrate your node data to a larger drive.
-  </Card>
-
-  <Card title="Odroid setup" href="/docs/bonus/raspberry-pi/odroid-setup">
-    Run RaspiBolt on an Odroid XU4 or compatible board.
-  </Card>
-
-  <Card title="Trezor SSH agent" href="/docs/bonus/raspberry-pi/trezor-agent">
-    Use a Trezor as a hardware-backed SSH key.
-  </Card>
-
-  <Card title="UPS with NUT" href="/docs/bonus/raspberry-pi/ups-nut">
-    Graceful shutdown when a connected UPS runs low.
-  </Card>
-</Cards>
-
-
-# Odroid setup (/docs/bonus/raspberry-pi/odroid-setup)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/odroid-setup.md)
-  while we port it over.
-</Callout>
-
-If you'd rather run RaspiBolt on different hardware, this guide
-adapts the setup to the [Odroid XU4](https://www.hardkernel.com/)
-and compatible boards like the HC1 and HC2. The main guide's
-software choices still apply, only the OS bring-up and a handful
-of platform-specific tweaks change.
-
-
-# System overview (/docs/bonus/raspberry-pi/system-overview)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/system-overview.md)
-  while we port it over.
-</Callout>
-
-The [raspibolt-pulse](https://github.com/raspibolt/raspibolt-pulse)
-script prints a dense, color-coded status overview on every SSH
-login, block height, channel balances, disk usage, memory, and
-service health all in one glance. It's the fastest way to confirm
-the node is healthy before you start tinkering.
-
-
-# Trezor SSH agent (/docs/bonus/raspberry-pi/trezor-agent)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/trezor-agent.md)
-  while we port it over.
-</Callout>
-
-Instead of trusting a plain SSH key on your laptop, you can let a
-Trezor hardware wallet sign SSH challenges. Your key never leaves
-the device, and every login prompts you to physically confirm on
-the Trezor, a meaningful bump in security for the admin account
-that runs your node.
-
-
-# Upgrade external drive (/docs/bonus/raspberry-pi/upgrade-external-drive)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/upgrade-external-drive.md)
-  while we port it over.
-</Callout>
-
-The blockchain keeps growing, so the 1 TB drive that felt generous
-three years ago will eventually fill up. This guide walks through
-cloning your node's data onto a larger drive and swapping it in
-without losing channels or state, minimizing downtime for your
-Lightning node along the way.
-
-
-# UPS with NUT (/docs/bonus/raspberry-pi/ups-nut)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/ups-nut.md)
-  while we port it over.
-</Callout>
-
-A sudden power loss can corrupt the Bitcoin or LND database and
-force a lengthy resync. With a UPS and
-[Network UPS Tools](https://networkupstools.org/) (NUT), your node
-watches the battery level and triggers a clean shutdown before the
-UPS runs out, turning a brownout into a five-minute nuisance
-instead of hours of downtime.
-
-
 # AmbossPing (/docs/bonus/lightning/ambossping)
 
 
@@ -5729,3 +5505,233 @@ wallet that talks to your own LND node over gRPC. It gives you a
 clean mobile UI for managing peers, opening channels, making
 payments, and generating invoices, all backed by the node running
 in your own home.
+
+
+# Aliases (/docs/bonus/raspberry-pi/aliases)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/aliases.md)
+  while we port it over.
+</Callout>
+
+Aliases are shortcuts for long or frequently used shell commands.
+The guide installs a curated `.bash_aliases` file so `admin` gets
+concise shortcuts for inspecting Bitcoin Core, LND, system logs, and
+service status, saving you the muscle memory of typing the full
+command every time.
+
+
+# Boot from microSD card (/docs/bonus/raspberry-pi/boot-from-microsd-card)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/boot-from-microsd-card.md)
+  while we port it over.
+</Callout>
+
+Not every Raspberry Pi can boot directly from an external drive. If
+yours can't, or your USB-SATA enclosure is picky, this guide sets
+up a split configuration: boot the OS from a microSD card, then mount
+the external drive for all the application and blockchain data.
+
+
+# Pimp the command line (/docs/bonus/raspberry-pi/command-line)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/command-line.md)
+  while we port it over.
+</Callout>
+
+A small quality-of-life tweak: make your shell prompt shine with a
+golden Bitcoin symbol, enable color output for `ls`, and nudge the
+defaults so the terminal is easier on the eyes. Purely cosmetic, but
+it takes two minutes and you'll appreciate it every time you log
+back in.
+
+
+# Install Go (/docs/bonus/raspberry-pi/go)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/go.md)
+  while we port it over.
+</Callout>
+
+A few RaspiBolt bonus tools (regolancer and some monitoring
+helpers) are written in [Go](https://go.dev). This short guide handles
+installing, upgrading, and removing the Go toolchain on the Pi, so
+you can build those tools yourself without polluting the rest of
+the system.
+
+
+# Homer (/docs/bonus/raspberry-pi/homer)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/homer.md)
+  while we port it over.
+</Callout>
+
+[Homer](https://github.com/bastienwirtz/homer) is a simple
+browser-based dashboard for your self-hosted services. You list your
+web tools in a YAML file and Homer renders a clean, bookmarkable
+homepage, one click into RTL, ThunderHub, Mempool, BTC RPC
+Explorer, or whatever else you've spun up.
+
+
+# Raspberry Pi bonus (/docs/bonus/raspberry-pi)
+
+
+
+This section covers the host system rather than the Bitcoin or
+Lightning stack: shell tweaks, dashboards, alternative boot and
+hardware configurations, UPS integration, and hardware-wallet-based
+SSH. None of it is required for a working node, it's what you
+reach for when you're ready to polish the setup.
+
+<Callout type="info" title="Content being migrated">
+  The bonus pages are still being rewritten for v4. Each page links to
+  the v3 source while we work through the backlog.
+</Callout>
+
+## What's in this section [#whats-in-this-section]
+
+<Cards>
+  <Card title="System overview" href="/docs/bonus/raspberry-pi/system-overview">
+    Login dashboard with node and system status.
+  </Card>
+
+  <Card title="Aliases" href="/docs/bonus/raspberry-pi/aliases">
+    Shell shortcuts for common node-management commands.
+  </Card>
+
+  <Card title="Pimp the command line" href="/docs/bonus/raspberry-pi/command-line">
+    Colorful prompt and nicer ls defaults.
+  </Card>
+
+  <Card title="Homer" href="/docs/bonus/raspberry-pi/homer">
+    Browser dashboard with links to all your web services.
+  </Card>
+
+  <Card title="Install Go" href="/docs/bonus/raspberry-pi/go">
+    Install, update, or uninstall the Go toolchain.
+  </Card>
+
+  <Card title="Boot from microSD" href="/docs/bonus/raspberry-pi/boot-from-microsd-card">
+    Boot from microSD and use the external drive for data.
+  </Card>
+
+  <Card title="Upgrade external drive" href="/docs/bonus/raspberry-pi/upgrade-external-drive">
+    Migrate your node data to a larger drive.
+  </Card>
+
+  <Card title="Odroid setup" href="/docs/bonus/raspberry-pi/odroid-setup">
+    Run RaspiBolt on an Odroid XU4 or compatible board.
+  </Card>
+
+  <Card title="Trezor SSH agent" href="/docs/bonus/raspberry-pi/trezor-agent">
+    Use a Trezor as a hardware-backed SSH key.
+  </Card>
+
+  <Card title="UPS with NUT" href="/docs/bonus/raspberry-pi/ups-nut">
+    Graceful shutdown when a connected UPS runs low.
+  </Card>
+</Cards>
+
+
+# Odroid setup (/docs/bonus/raspberry-pi/odroid-setup)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/odroid-setup.md)
+  while we port it over.
+</Callout>
+
+If you'd rather run RaspiBolt on different hardware, this guide
+adapts the setup to the [Odroid XU4](https://www.hardkernel.com/)
+and compatible boards like the HC1 and HC2. The main guide's
+software choices still apply, only the OS bring-up and a handful
+of platform-specific tweaks change.
+
+
+# System overview (/docs/bonus/raspberry-pi/system-overview)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/system-overview.md)
+  while we port it over.
+</Callout>
+
+The [raspibolt-pulse](https://github.com/raspibolt/raspibolt-pulse)
+script prints a dense, color-coded status overview on every SSH
+login, block height, channel balances, disk usage, memory, and
+service health all in one glance. It's the fastest way to confirm
+the node is healthy before you start tinkering.
+
+
+# Trezor SSH agent (/docs/bonus/raspberry-pi/trezor-agent)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/trezor-agent.md)
+  while we port it over.
+</Callout>
+
+Instead of trusting a plain SSH key on your laptop, you can let a
+Trezor hardware wallet sign SSH challenges. Your key never leaves
+the device, and every login prompts you to physically confirm on
+the Trezor, a meaningful bump in security for the admin account
+that runs your node.
+
+
+# Upgrade external drive (/docs/bonus/raspberry-pi/upgrade-external-drive)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/upgrade-external-drive.md)
+  while we port it over.
+</Callout>
+
+The blockchain keeps growing, so the 1 TB drive that felt generous
+three years ago will eventually fill up. This guide walks through
+cloning your node's data onto a larger drive and swapping it in
+without losing channels or state, minimizing downtime for your
+Lightning node along the way.
+
+
+# UPS with NUT (/docs/bonus/raspberry-pi/ups-nut)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/ups-nut.md)
+  while we port it over.
+</Callout>
+
+A sudden power loss can corrupt the Bitcoin or LND database and
+force a lengthy resync. With a UPS and
+[Network UPS Tools](https://networkupstools.org/) (NUT), your node
+watches the battery level and triggers a clean shutdown before the
+UPS runs out, turning a brownout into a five-minute nuisance
+instead of hours of downtime.
