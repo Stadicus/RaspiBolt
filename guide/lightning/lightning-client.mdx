@@ -1,0 +1,549 @@
+---
+title: Lightning client
+description: Install and configure LND (Lightning Network Daemon). Write lnd.conf for bitcoind RPC and ZMQ, generate the 24-word seed, set up auto-unlock, enable watchtower and wumbo channels.
+---
+Which Lightning implementation should a first-time node run? You'll
+install **LND** (the Lightning Network Daemon) from
+[Lightning Labs](https://lightning.engineering), the most widely
+used, best-documented, and best-tooled implementation for a node
+operator who wants a web UI and a mobile app to work out of the box.
+Core Lightning and Eclair are excellent too, but LND has the
+ecosystem advantage, and that matters when you're starting out.
+
+This page takes you from zero to a running `lnd` service with a
+24-word seed, an auto-unlocking wallet, and a healthy `getinfo`
+response. Budget about 30 minutes of hands-on time.
+
+## Create the system user and data directory
+
+LND is a long-running daemon that manages real money. It gets its
+own unprivileged system user and a dedicated data directory on the
+SSD, with the home-directory `~/.lnd` path symlinked to the real
+location. Same pattern you used for `bitcoind`.
+
+1. As user `admin`, create the `lnd` user. Give it group membership
+   in `bitcoin` (so it can read `bitcoin.conf` for auto-RPC) and in
+   `debian-tor` (so it can read Tor's cookie file for the control
+   port):
+
+   ```bash
+   sudo adduser --disabled-password --gecos "" lnd
+   sudo usermod -a -G bitcoin,debian-tor lnd
+   sudo adduser admin lnd
+   ```
+
+   The third command puts `admin` into the `lnd` group so you can
+   run `lncli` later without `sudo`.
+
+2. Create the data directory on the SSD and hand it to `lnd`:
+
+   ```bash
+   sudo mkdir /data/lnd
+   sudo chown -R lnd:lnd /data/lnd
+   ```
+
+3. Open a shell as the `lnd` user and set up the symlinks. LND
+   looks for its data in `~/.lnd` by default; pointing that at
+   `/data/lnd` means every tool and tutorial that assumes the
+   default path still works:
+
+   ```bash
+   sudo su - lnd
+   ln -s /data/lnd /home/lnd/.lnd
+   ln -s /data/bitcoin /home/lnd/.bitcoin
+   ls -la
+   ```
+
+   The two symlinks should show in cyan, not red. Red means a
+   broken link, usually because the target directory doesn't exist
+   yet.
+
+## Download LND
+
+LND ships as a statically linked binary tarball. You'll download
+it, verify the SHA256 checksum, verify the GPG signature on the
+manifest, and only then copy the binaries into place.
+
+1. Still as the `lnd` user, grab the release archive, the manifest,
+   and the maintainer's signature:
+
+   ```bash
+   cd /tmp
+   wget %urls.lndDownload%
+   wget %urls.lndSha256%
+   wget https://github.com/lightningnetwork/lnd/releases/download/v%versions.lnd%/manifest-roasbeef-v%versions.lnd%.sig
+   ```
+
+2. Verify the checksum of the binary against the manifest. The
+   `--ignore-missing` flag lets you check only the file you
+   downloaded, not every platform listed in the manifest:
+
+   ```bash
+   sha256sum --check %files.lndSha256% --ignore-missing
+   ```
+
+   Expected output:
+
+   ```text
+   %files.lndArchive%: OK
+   ```
+
+## Verify the signature
+
+The checksum proves the download wasn't corrupted in transit. It
+does not prove the manifest itself is authentic, for that you need
+to verify the PGP signature against the maintainer's public key.
+LND releases are signed by Olaoluwa "Roasbeef" Osuntokun.
+
+1. Import the signing key from the LND repo (the
+   `scripts/keys/roasbeef.asc` path is the canonical source):
+
+   ```bash
+   curl https://raw.githubusercontent.com/lightningnetwork/lnd/master/scripts/keys/roasbeef.asc | gpg --import
+   ```
+
+2. Verify the manifest against the signature:
+
+   ```bash
+   gpg --verify manifest-roasbeef-v%versions.lnd%.sig %files.lndSha256%
+   ```
+
+   Look for a `Good signature from "Olaoluwa Osuntokun"` line. The
+   full fingerprint should read
+   `A5B6 1896 952D 9FDA 83BC 054C DC42 612E 8923 7182`. GPG will
+   also warn that the key isn't certified with a trusted signature.
+   That's expected; you haven't built a web of trust around this
+   key, you've just pinned its fingerprint.
+
+<Callout type="info" title="Why GPG when we already have a checksum?">
+A corrupt download trips the checksum. A compromised download
+server serves a real binary with a **matching** checksum and a
+forged manifest. The signature check is what catches that, the
+attacker would also need Roasbeef's private key, which they do not
+have.
+</Callout>
+
+## Install the binaries
+
+1. Extract the archive and install both binaries into
+   `/usr/local/bin` with root ownership:
+
+   ```bash
+   tar -xvf %files.lndArchive%
+   sudo install -m 0755 -o root -g root -t /usr/local/bin lnd-linux-arm64-v%versions.lnd%/*
+   lnd --version
+   ```
+
+   Expected output:
+
+   ```text
+   lnd version %versions.lnd% commit=v%versions.lnd%
+   ```
+
+## Set the wallet unlock password
+
+LND's wallet is password-protected and asks for the password on
+every startup. You have two options:
+
+- **Manual unlock** every time the Pi reboots. Most secure at rest:
+  the password lives only in your head, but a power blip at 3 a.m.
+  leaves LND offline until you're awake to type a password.
+- **Auto-unlock** from a file on disk. Trades at-rest encryption
+  for uptime. On a single-user home node behind a firewall this is
+  the right default; an attacker who can read files as `lnd` has
+  already lost you the game.
+
+This guide picks auto-unlock. You can switch later.
+
+1. Still as user `lnd`, create the password file and enter
+   password `[C]` (one you haven't used anywhere else):
+
+   ```bash
+   nano /data/lnd/password.txt
+   ```
+
+2. Lock the file down so only `lnd` can read it:
+
+   ```bash
+   chmod 600 /data/lnd/password.txt
+   ```
+
+## Write lnd.conf
+
+LND reads its configuration from `/data/lnd/lnd.conf` (resolved
+via the `~/.lnd` symlink). This file does the heavy lifting,
+chain backend, Tor, channel policy, watchtower client, all of it.
+
+1. Create the config file:
+
+   ```bash
+   nano /data/lnd/lnd.conf
+   ```
+
+2. Paste the following. Replace `YourAlias` with whatever name you
+   want to show up in channel graphs, and pick a hex colour you
+   like:
+
+   ```ini
+   # RaspiBolt: lnd configuration
+   # /data/lnd/lnd.conf
+
+   [Application Options]
+   alias=YourAlias
+   color=#ff9900
+   debuglevel=info
+   maxpendingchannels=5
+   listen=localhost
+
+   # Auto-unlock the wallet from a file on disk.
+   # Comment out to unlock manually with `lncli unlock`.
+   wallet-unlock-password-file=/data/lnd/password.txt
+   wallet-unlock-allow-create=true
+
+   # TLS certificate: auto-renew and don't advertise LAN IPs
+   tlsautorefresh=true
+   tlsdisableautofill=true
+
+   # Channel defaults
+   bitcoin.basefee=1000
+   bitcoin.feerate=1
+   minchansize=100000
+   accept-keysend=true
+   accept-amp=true
+   coop-close-target-confs=24
+
+   # Drop stale invoices to keep the DB tidy
+   gc-canceled-invoices-on-startup=true
+   gc-canceled-invoices-on-the-fly=true
+
+   [bolt]
+   db.bolt.auto-compact=true
+   db.bolt.auto-compact-min-age=168h
+
+   [Bitcoin]
+   bitcoin.active=true
+   bitcoin.mainnet=true
+   bitcoin.node=bitcoind
+
+   [Bitcoind]
+   bitcoind.rpchost=127.0.0.1:8332
+   bitcoind.rpcuser=raspibolt
+   bitcoind.rpcpass=PASSWORD_B_REPLACE_ME
+   bitcoind.zmqpubrawblock=tcp://127.0.0.1:28332
+   bitcoind.zmqpubrawtx=tcp://127.0.0.1:28333
+
+   [tor]
+   tor.active=true
+   tor.v3=true
+   tor.streamisolation=true
+   tor.skip-proxy-for-clearnet-targets=true
+
+   [protocol]
+   protocol.wumbo-channels=true
+   protocol.option-scid-alias=true
+   protocol.simple-taproot-chans=true
+   protocol.rbf-coop-close=true
+
+   [wtclient]
+   wtclient.active=true
+   ```
+
+   Replace `PASSWORD_B_REPLACE_ME` with the `rpcpass` from your
+   `bitcoin.conf` (password `[B]` from the Bitcoin section).
+
+<Callout type="info" title="Stream isolation, and why we skip it for bitcoind">
+`tor.streamisolation=true` gives every outbound Lightning
+connection its own Tor circuit, so two peers can't correlate you
+from the same exit. Good privacy default.
+
+But `skip-proxy-for-clearnet-targets=true` is also on, which keeps
+local clearnet connections, like the one to `bitcoind` on
+`127.0.0.1:8332`, off of Tor entirely. Without that, LND tries to
+send RPC calls through Tor to a localhost IP, and Tor (rightly)
+refuses. The combination gives you Tor for everything public and
+direct sockets for everything local.
+</Callout>
+
+## systemd unit
+
+Running `lnd` by hand once is fine for the initial wallet setup.
+For actual operation you want it under systemd so it starts at
+boot, restarts after crashes, and only comes up after `bitcoind`
+is ready.
+
+1. Back as user `admin`, create the unit file:
+
+   ```bash
+   exit
+   sudo nano /etc/systemd/system/lnd.service
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: systemd unit for LND
+   # /etc/systemd/system/lnd.service
+
+   [Unit]
+   Description=LND Lightning Network Daemon
+   Wants=bitcoind.service
+   After=bitcoind.service
+
+   [Service]
+   ExecStart=/usr/local/bin/lnd
+   ExecStop=/usr/local/bin/lncli stop
+   User=lnd
+   Type=simple
+   Restart=always
+   RestartSec=30
+   TimeoutSec=240
+   LimitNOFILE=128000
+
+   # Hardening
+   PrivateTmp=true
+   ProtectSystem=full
+   NoNewPrivileges=true
+   PrivateDevices=true
+   MemoryDenyWriteExecute=true
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+3. Reload systemd and enable the unit (don't start it yet, you
+   need to create the wallet first):
+
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable lnd
+   ```
+
+## Create the wallet and the seed
+
+First start is a two-window affair: LND runs in the foreground in
+one SSH session and waits for you to create the wallet from a
+second session.
+
+1. Still as `admin`, start LND in the foreground:
+
+   ```bash
+   sudo su - lnd
+   lnd
+   ```
+
+   You'll see it print startup logs and then sit on a line like
+   `Waiting for wallet encryption password. Use 'lncli create' ...`.
+   Leave this window open.
+
+2. Open a **second** SSH session to the Pi. Become the `lnd` user
+   and run `lncli create`:
+
+   ```bash
+   sudo su - lnd
+   lncli create
+   ```
+
+3. At the prompts:
+   - Enter password `[C]` as the wallet password. Use exactly the
+     same password you wrote into `password.txt`.
+   - When asked about an existing cipher seed, answer `n`, you
+     want a fresh seed.
+   - When asked about a seed passphrase, press Enter to skip it
+     unless you know what you're doing. A passphrase adds a 25th
+     word that you also have to back up; lose it and the 24 words
+     alone will not restore the wallet.
+
+4. LND prints a 24-word cipher seed. **Stop scrolling. Read this
+   part.**
+
+<Callout type="error" title="The 24-word seed is your on-chain wallet">
+These 24 words are the only rope back to the on-chain funds on
+this node. If the Pi dies, the SSD dies, or the house burns down,
+the seed, and **only** the seed, can restore your wallet on a
+fresh LND.
+
+- **Write the words down on paper.** Twice. Keep the two copies in
+  two different physical locations.
+- **Do not** photograph the screen, do not type the words into any
+  text file, do not email them to yourself, do not put them in a
+  password manager unless it's one you trust with your life.
+- The [RaspiBolt backup card](https://github.com/raspibolt/raspibolt/blob/master/resources/raspibolt-backup-card.pdf)
+  is a nice printable template if you want one.
+- Anyone with these words can empty every on-chain sat on this
+  node. The seed does **not** restore Lightning channel balances,
+  for that, see [Channel backup](/docs/lightning/channel-backup).
+
+Seriously. Write it down before you go any further.
+</Callout>
+
+Once the seed is recorded, exit the second session:
+
+```bash
+exit
+exit
+```
+
+Back in the first window where `lnd` is still running, stop it with
+`Ctrl-C`. Then start it again in the foreground to confirm the
+auto-unlock works:
+
+```bash
+lnd
+```
+
+Look for `Attempting automatic wallet unlock with password` and
+`Opened wallet`. Stop it again with `Ctrl-C` and exit the `lnd`
+user session:
+
+```bash
+exit
+```
+
+## Start LND under systemd
+
+1. As `admin`, start the service and follow the log:
+
+   ```bash
+   sudo systemctl start lnd
+   sudo journalctl -f -u lnd
+   ```
+
+   Wait until you see `LNWL: Opened wallet` and then graph-sync
+   progress. Exit the log tail with `Ctrl-C`.
+
+2. Let `admin` use `lncli` without `sudo`. The `admin` user is
+   already in the `lnd` group; the remaining permissions tweak is
+   a symlink and a group-read bit on the macaroon:
+
+   ```bash
+   ln -s /data/lnd /home/admin/.lnd
+   sudo chmod -R g+X /data/lnd/data/
+   sudo chmod g+r /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon
+   ```
+
+3. Log out of the SSH session and log back in, group membership
+   only takes effect on a fresh shell. Then smoke-test:
+
+   ```bash
+   lncli getinfo
+   lncli getnetworkinfo
+   ```
+
+   `getinfo` should return an `identity_pubkey`, the current
+   `block_height`, and `synced_to_chain: true` once LND has caught
+   up with the graph. `getnetworkinfo` should show a non-zero
+   number of nodes and channels, proof that LND is talking to the
+   wider Lightning network over Tor.
+
+**Main takeaway:** LND is up, the wallet is unlocked, the 24-word
+seed is on paper, and `lncli` works from `admin`. You have a
+working Lightning node.
+
+## Fund the node and open a channel
+
+1. Generate a native-SegWit address and send a small amount of
+   on-chain sats to it from another wallet:
+
+   ```bash
+   lncli newaddress p2wkh
+   ```
+
+   Wait for one confirmation, then:
+
+   ```bash
+   lncli walletbalance
+   ```
+
+2. Pick a well-connected peer from
+   [Amboss](https://amboss.space) or
+   [LightningNetwork+](https://lightningnetwork.plus). A peer URI
+   looks like `pubkey@host:port`. Connect, then open a channel
+   (capacity in sats, explicit fee in sats/vByte from
+   [mempool.space](https://mempool.space)):
+
+   ```bash
+   lncli connect 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f@34.239.230.56:9735
+   lncli openchannel --sat_per_vbyte 8 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f 200000 0
+   ```
+
+   Three confirmations later the channel is active:
+
+   ```bash
+   lncli listchannels
+   ```
+
+<Callout type="info" title="Before you open channels in anger">
+Set up [Channel backup](/docs/lightning/channel-backup) **before**
+you open your first real channel. The backup is only useful if it
+exists when you need it, and you need it as soon as the first
+channel lands.
+</Callout>
+
+## Add watchtowers
+
+Lightning channels assume both sides are honest. If a peer tries
+to settle an old channel state while your node is offline, they
+walk away with funds that should have been yours. Watchtowers are
+third-party nodes that watch your channels for you and punish
+cheaters, and because the worst a watchtower can do is fail
+silently, you don't have to trust them.
+
+You already enabled `wtclient.active=true` in `lnd.conf`. Add a
+tower or two:
+
+```bash
+sudo su - lnd
+lncli wtclient add 023bad37e5795654cecc69b43599da8bd5789ac633c098253f60494bde602b60bf@iiu4epqzm6cydqhezueenccjlyzrqeruntlzbx47mlmdgfwgtrll66qd.onion:9911
+lncli wtclient towers
+```
+
+Openoms maintains a
+[list of public altruistic watchtowers](https://github.com/openoms/lightning-node-management/issues/4);
+add two or three more for redundancy.
+
+## Useful lncli commands
+
+A small reference you'll come back to:
+
+```bash
+# node info and peers
+lncli getinfo
+lncli listpeers
+
+# channels
+lncli pendingchannels
+lncli listchannels
+lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
+lncli closechannel --force <funding_txid> <output_index>
+
+# payments
+lncli decodepayreq <invoice>
+lncli payinvoice <invoice>
+lncli sendpayment --amp --dest=<pubkey> --amt=<sats>
+lncli addinvoice <sats>
+lncli listinvoices
+lncli listpayments
+
+# help
+lncli
+lncli help <command>
+```
+
+Full API reference at
+[api.lightning.community](https://api.lightning.community).
+
+## Upgrading LND
+
+LND release notes are non-negotiable reading, some releases ship
+database migrations that are one-way. Before every upgrade:
+
+1. Read the
+   [release notes](https://github.com/lightningnetwork/lnd/releases)
+   end to end.
+2. Stop the service: `sudo systemctl stop lnd`.
+3. Repeat the download, verify, and install steps above with the
+   new version.
+4. Update `%versions.lnd%` in `lib/versions.ts` so the rest of the
+   guide agrees.
+5. Start the service: `sudo systemctl start lnd` and tail the log
+   until you see `synced_to_chain: true`.

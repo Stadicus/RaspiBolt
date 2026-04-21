@@ -1,0 +1,5 @@
+{
+  "title": "Lightning",
+  "pages": ["index", "lightning-client", "web-app", "mobile-app", "channel-backup"],
+  "defaultOpen": false
+}
