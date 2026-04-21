@@ -28,6 +28,29 @@ article h4 {
   letter-spacing: -0.015em;
 }
 
+/* Paragraph rhythm — Fumadocs prose defaults to ~1.25em between paragraphs,
+ * which reads airy on wide screens when content is command-heavy. Tighten
+ * a touch without collapsing the visual break between ideas.
+ */
+article p {
+  margin-block: 0.85em;
+}
+
+/* The first paragraph after a heading should sit closer to it than to the
+ * previous paragraph, so emphasise the top-margin asymmetry.
+ */
+article :is(h2, h3, h4) + p {
+  margin-block-start: 0.4em;
+}
+
+/* List items tend to balloon in docs; keep them compact. */
+article :is(ul, ol) li {
+  margin-block: 0.25em;
+}
+article :is(ul, ol) li > p {
+  margin-block: 0.25em;
+}
+
 /* Inline code — amber tint so it stands out from body text */
 article :not(pre) > code {
   background-color: color-mix(in srgb, var(--color-fd-primary) 10%, transparent);
