@@ -1,0 +1,15 @@
+# Install Go (/docs/bonus/raspberry-pi/go)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/go.md)
+  while we port it over.
+</Callout>
+
+A few RaspiBolt bonus tools (regolancer and some monitoring
+helpers) are written in [Go](https://go.dev). This short guide handles
+installing, upgrading, and removing the Go toolchain on the Pi, so
+you can build those tools yourself without polluting the rest of
+the system.

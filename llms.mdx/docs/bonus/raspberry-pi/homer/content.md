@@ -1,0 +1,15 @@
+# Homer (/docs/bonus/raspberry-pi/homer)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/homer.md)
+  while we port it over.
+</Callout>
+
+[Homer](https://github.com/bastienwirtz/homer) is a simple
+browser-based dashboard for your self-hosted services. You list your
+web tools in a YAML file and Homer renders a clean, bookmarkable
+homepage, one click into RTL, ThunderHub, Mempool, BTC RPC
+Explorer, or whatever else you've spun up.

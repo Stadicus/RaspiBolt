@@ -1,0 +1,15 @@
+# Aliases (/docs/bonus/raspberry-pi/aliases)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/aliases.md)
+  while we port it over.
+</Callout>
+
+Aliases are shortcuts for long or frequently used shell commands.
+The guide installs a curated `.bash_aliases` file so `admin` gets
+concise shortcuts for inspecting Bitcoin Core, LND, system logs, and
+service status, saving you the muscle memory of typing the full
+command every time.

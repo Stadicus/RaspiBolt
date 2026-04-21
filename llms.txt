@@ -1,0 +1,80 @@
+# Docs
+
+- [Backstory](/docs/backstory): Why this guide exists, who built it, and what "self-sovereign" really means.
+- [Architecture](/docs/architecture): How Bitcoin Core, Electrs, LND, RTL, Tor, Tailscale, and Caddy fit together on one Raspberry Pi.
+- Hardware
+  - [Overview](/docs/raspberry-pi): From bare hardware to a hardened Bitcoin-ready computer.
+  - [Preparations](/docs/raspberry-pi/preparations): Get the hardware sorted and pick your passwords before you boot anything.
+  - [Operating system](/docs/raspberry-pi/operating-system): Write Raspberry Pi OS to the SSD, pre-configure it, and boot the Pi for the first time.
+  - [Remote access](/docs/raspberry-pi/remote-access): SSH to the Pi from macOS, Linux, or Windows OpenSSH. Command-line basics for first-timers. Generate and install an ed25519 key for passwordless login.
+  - [System configuration](/docs/raspberry-pi/system-configuration): apt full-upgrade, verify SSD speed with hdparm, create /data directory and service-user symlinks, confirm zram swap is active on Trixie.
+  - [Security](/docs/raspberry-pi/security): SSH hardening with ed25519 keys, UFW firewall rules, fail2ban brute-force protection on systemd, open-files limit, disable Bluetooth and Wi-Fi radios.
+  - [Privacy](/docs/raspberry-pi/privacy): Route Bitcoin and Lightning traffic through Tor, then add Tailscale for painless remote access.
+- Bitcoin
+  - [Overview](/docs/bitcoin): Install Bitcoin Core, Electrs, and a block explorer, then point a desktop wallet at your own node.
+  - [Bitcoin client](/docs/bitcoin/bitcoin-client): Install and run Bitcoin Core (bitcoind), GPG-verify the release, tune bitcoin.conf for a Pi 5 (dbcache, maxmempool), and sync the full blockchain (IBD, initial block download) through Tor.
+  - [Electrum server](/docs/bitcoin/electrum-server): Build Electrs from source, index the blockchain for Electrum-protocol wallets, wrap the raw TCP port in TLS with stunnel so Sparrow, Electrum, and hardware wallets can connect privately.
+  - [Blockchain explorer](/docs/bitcoin/blockchain-explorer): Run BTC RPC Explorer on Node.js 22 behind Caddy HTTPS. Private lookup for blocks, transactions, mempool, fee estimates, UTXO queries. No leakage to public explorers.
+  - [Desktop wallet](/docs/bitcoin/desktop-wallet): Point Sparrow Wallet at your own Electrs over TLS. Watch-only wallets, hardware wallet integration, coin control, labelling UTXOs, air-gapped PSBT signing.
+- Lightning
+  - [Overview](/docs/lightning): Install LND, wire up a web dashboard and mobile app, and keep your channels safe.
+  - [Lightning client](/docs/lightning/lightning-client): Install and configure LND (Lightning Network Daemon). Write lnd.conf for bitcoind RPC and ZMQ, generate the 24-word seed, set up auto-unlock, enable watchtower and wumbo channels.
+  - [Web app](/docs/lightning/web-app): Ride The Lightning (RTL), the browser dashboard for LND. Node.js install, RTL-Config.json, Caddy reverse proxy on port 443 with self-signed internal TLS.
+  - [Mobile app](/docs/lightning/mobile-app): Pair the Zeus iOS/Android wallet with LND over a Tor hidden service (onion). Generate the lndconnect URL with qrencode, paste admin macaroon, connect.
+  - [Channel backup](/docs/lightning/channel-backup): Automated off-Pi sync of channel.backup (SCB, static channel backup) via systemd.path and scp. Restore flow with lncli restorechanbackup if the SSD dies.
+- Bonus
+  - [Bonus](/docs/bonus): Optional guides for extra tooling, alternative software, and niche setups that complement the main RaspiBolt.
+  - Bitcoin bonus
+    - [Bitcoin bonus](/docs/bonus/bitcoin): Additional Bitcoin software, explorers, wallets, alternative Electrum servers, privacy tools, and testnet.
+    - [Mempool](/docs/bonus/bitcoin/mempool): Self-hosted Bitcoin blockchain and mempool visualizer for private transaction lookups and fee estimation.
+    - [UTXOracle](/docs/bonus/bitcoin/UTXOracle): Python script that estimates the BTC/USD price from your own blockchain data, no external exchange required.
+    - [Download the white paper](/docs/bonus/bitcoin/white-paper): Reconstruct the Bitcoin white paper PDF directly from the blockchain data on your own node.
+    - [Bisq](/docs/bonus/bitcoin/bisq): Decentralized desktop exchange for privately buying and selling non-KYC bitcoin.
+    - [BitBoxApp](/docs/bonus/bitcoin/bitboxapp): Beginner-friendly desktop wallet for the BitBox02 hardware wallet, pointed at your own node.
+    - [Electrum Wallet Desktop](/docs/bonus/bitcoin/electrum-wallet-desktop): Feature-rich desktop Bitcoin wallet for power users, connected to your own Electrum server.
+    - [Specter Desktop](/docs/bonus/bitcoin/specter-desktop): User-friendly GUI around Bitcoin Core with a focus on multisig using hardware wallets and airgapped devices.
+    - [Sparrow Terminal](/docs/bonus/bitcoin/sparrow-terminal): Headless version of Sparrow Wallet intended for systems without a display, usable as a server daemon.
+    - [Samourai Dojo](/docs/bonus/bitcoin/dojo): Personal backend for Samourai Wallet, HD account balances, BIP47 support, and transaction broadcasts via your own node.
+    - [Electrum Personal Server](/docs/bonus/bitcoin/electrum-personal-server): Lightweight Electrum server that serves only your own wallets, as an alternative to Electrs or Fulcrum.
+    - [Fulcrum](/docs/bonus/bitcoin/fulcrum): Fast and nimble Electrum-compatible SPV server, a performance-focused alternative to Electrs.
+    - [JoinMarket](/docs/bonus/bitcoin/joinmarket): Decentralized marketplace for CoinJoin transactions to improve on-chain privacy, with optional yield from providing liquidity.
+    - [JAM (JoinMarket UI)](/docs/bonus/bitcoin/Jam): Web interface for JoinMarket focused on user-friendliness, with sensible defaults for CoinJoin newcomers.
+    - [I2P](/docs/bonus/bitcoin/i2p): Anonymous network layer you can run alongside Tor to give Bitcoin Core a second private transport.
+    - [Safu Ninja](/docs/bonus/bitcoin/safu-ninja): DIY steel seed-phrase backup you can build from off-the-shelf parts for private, resilient storage.
+    - [RaspiBolt on testnet](/docs/bonus/bitcoin/testnet): Configure your RaspiBolt to run on Bitcoin testnet so you can experiment without risking real money.
+  - Lightning bonus
+    - [Lightning bonus](/docs/bonus/lightning): Extra Lightning tooling, dashboards, liquidity managers, fee automation, alternative implementations, and wallets.
+    - [ThunderHub](/docs/bonus/lightning/thunderhub): Open-source browser dashboard for managing and monitoring an LND node from any device.
+    - [LNDg](/docs/bonus/lightning/lndg): Lightweight web GUI for power users to monitor and automate LND routing-node operations.
+    - [lntop](/docs/bonus/lightning/lntop): Interactive text-mode channel viewer for Lightning nodes, inspired by htop.
+    - [lnbalance](/docs/bonus/lightning/lnbalance): Simple shell script that prints a quick balance overview for your Lightning node.
+    - [lnchannels](/docs/bonus/lightning/lnchannels): Simple shell script that prints a summary of all channels on your Lightning node.
+    - [AmbossPing](/docs/bonus/lightning/ambossping): Shell script that sends health-check heartbeats from your node to the amboss.space monitoring service.
+    - [Balance of Satoshis](/docs/bonus/lightning/balance-of-satoshis): LND power-user toolkit for rebalancing channels, monitoring the node, and driving a Telegram bot.
+    - [charge-lnd](/docs/bonus/lightning/charge-lnd): Policy-based fee manager for LND that sets per-channel fee rates from rules you define.
+    - [Circuit Breaker](/docs/bonus/lightning/circuit-breaker): Lightning firewall that protects LND from HTLC-flooding griefing attacks.
+    - [rebalance-lnd](/docs/bonus/lightning/rebalance-lnd): Command-line tool for circular rebalancing of LND channels to even out local and remote liquidity.
+    - [regolancer](/docs/bonus/lightning/regolancer): Lightweight LND rebalancer written in Go, focused on fast and efficient circular rebalances.
+    - [Core Lightning](/docs/bonus/lightning/cln): Alternative Lightning implementation you can run instead of LND, or side-by-side with it on the same node.
+    - [LNbits](/docs/bonus/lightning/lnbits): Free and open-source Lightning wallet and accounts system with a plug-in extension model.
+    - [CLBoss](/docs/bonus/lightning/clboss): Automated channel and liquidity manager for Core Lightning that opens, rebalances, and re-prices channels on its own.
+    - [Lightning Terminal](/docs/bonus/lightning/lightning-terminal): Browser-based UI from Lightning Labs for managing LND channel liquidity with Loop and Pool.
+    - [Zap Desktop](/docs/bonus/lightning/zap-desktop): Cross-platform Lightning Network wallet with a focus on user experience and ease of use.
+    - [Zap (iOS)](/docs/bonus/lightning/zap-ios): iOS Lightning wallet that connects to your RaspiBolt over the local network for peer, channel, and payment management.
+    - [Remote lncli](/docs/bonus/lightning/remote-lncli): Run lncli from a separate computer on your network to control your RaspiBolt Lightning node remotely.
+  - Raspberry Pi bonus
+    - [Raspberry Pi bonus](/docs/bonus/raspberry-pi): Quality-of-life tweaks, alternative hardware, and operational helpers for the host system under your node.
+    - [System overview](/docs/bonus/raspberry-pi/system-overview): Greet yourself on SSH login with a one-screen status dashboard of Bitcoin, Lightning, and system health.
+    - [Aliases](/docs/bonus/raspberry-pi/aliases): Set up shell aliases for common node-management commands to cut typing and memorization.
+    - [Pimp the command line](/docs/bonus/raspberry-pi/command-line): Customize your shell prompt with colors and a Bitcoin symbol, and make ls output easier to read.
+    - [Homer](/docs/bonus/raspberry-pi/homer): Browser-based dashboard with quick links to every web service running on your node.
+    - [Install Go](/docs/bonus/raspberry-pi/go): Install, update, or uninstall the Go toolchain, which several bonus tools require.
+    - [Boot from microSD card](/docs/bonus/raspberry-pi/boot-from-microsd-card): Boot the Raspberry Pi from microSD while using the external drive for blockchain and application data.
+    - [Upgrade external drive](/docs/bonus/raspberry-pi/upgrade-external-drive): Migrate from a smaller to a larger external drive as the blockchain outgrows your current storage.
+    - [Odroid setup](/docs/bonus/raspberry-pi/odroid-setup): Run the RaspiBolt stack on an Odroid XU4 or compatible board as an alternative to a Raspberry Pi.
+    - [Trezor SSH agent](/docs/bonus/raspberry-pi/trezor-agent): Use a Trezor hardware wallet as a second factor for SSH authentication to your node.
+    - [UPS with NUT](/docs/bonus/raspberry-pi/ups-nut): Configure Network UPS Tools so your node shuts down cleanly when a connected UPS reaches a critical battery level.
+
+- **Reference**
+- [Troubleshooting](/docs/troubleshooting): SSH locked out, hdparm too slow, UAS quirks, fail2ban unban, ufw rules, bitcoind won't start, stuck IBD, LND chain sync. Fix the frikkin' little thing.
+- [FAQ](/docs/faq): Upgrading from v3, reading an ext4 SSD on Windows, restoring LND data, common Linux commands, setting a fixed IP. Answers to the questions that come up again and again in the Telegram group.

@@ -1,0 +1,15 @@
+# System overview (/docs/bonus/raspberry-pi/system-overview)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/system-overview.md)
+  while we port it over.
+</Callout>
+
+The [raspibolt-pulse](https://github.com/raspibolt/raspibolt-pulse)
+script prints a dense, color-coded status overview on every SSH
+login, block height, channel balances, disk usage, memory, and
+service health all in one glance. It's the fastest way to confirm
+the node is healthy before you start tinkering.

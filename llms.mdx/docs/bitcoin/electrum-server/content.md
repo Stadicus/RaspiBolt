@@ -1,0 +1,349 @@
+# Electrum server (/docs/bitcoin/electrum-server)
+
+
+
+Your own Bitcoin Core is great at answering questions about blocks.
+It's lousy at answering "what's the balance of this address?",
+because doing that means walking the entire chain every time.
+[Electrs](https://github.com/romanz/electrs) bridges the gap: it
+reads blocks from Bitcoin Core, builds an index keyed by address and
+script, and serves answers on the Electrum protocol that desktop
+wallets like Sparrow, the BitBoxApp, Electrum, or Specter already
+speak.
+
+This is why running Electrs next to your node matters for privacy.
+Without it, a wallet querying "public" Electrum servers tells
+strangers exactly which addresses belong to you. With Electrs local,
+the query never leaves the Pi.
+
+## What you'll do [#what-youll-do]
+
+* Install Rust so you can build Electrs, the project doesn't ship
+  prebuilt binaries for ARM.
+* Compile and install `electrs` 0.11.1.
+* Put it behind **stunnel** for TLS on the LAN.
+* Wire it up as a systemd service so it starts on boot and stays up.
+
+<Callout type="info" title="stunnel for raw TCP, Caddy for HTTP">
+  Earlier versions of this guide used NGINX's stream module to wrap
+  Electrum's plain-TCP protocol in TLS. In v4, HTTP services get
+  Caddy (you'll see that in the next page), but the Electrum protocol
+  isn't HTTP, it's JSON-RPC over a raw TCP socket. `stunnel` is the
+  time-tested, one-config-file tool for exactly that job.
+</Callout>
+
+## Build dependencies [#build-dependencies]
+
+Electrs is written in Rust and links against `clang` and `cmake` for
+its native dependencies (mostly RocksDB). Install them once:
+
+```bash
+sudo apt install cargo clang cmake build-essential
+```
+
+Using Debian's packaged `cargo` avoids the extra step of installing
+`rustup` just for this one crate. The tradeoff is a slightly older
+Rust toolchain, still current enough for Electrs 0.11.1.
+
+## Build Electrs from source [#build-electrs-from-source]
+
+No binaries, no shortcuts: you build from a signed tag. That's the
+only way to know the thing running on your node matches what the
+maintainer, [Roman Zeyde](https://github.com/romanz), actually
+released.
+
+1. As `admin`, clone the repo at a specific tag:
+
+   ```bash
+   mkdir -p /home/admin/rust
+   cd /home/admin/rust
+   git clone --branch v0.11.1 https://github.com/romanz/electrs.git
+   cd electrs
+   ```
+
+2. Import Roman's signing key and verify the release tag:
+
+   ```bash
+   curl https://romanzey.de/pgp.txt | gpg --import
+   git verify-tag v0.11.1
+   ```
+
+   Expected output ends with a `Good signature` line and the key
+   fingerprint `15C8 C357 4AE4 F1E2 5F3F 35C5 87CA E5FA 4691 7CBB`.
+   Compare it against what you see in the terminal, a fingerprint
+   match is the whole point.
+
+3. Build it. On a Pi 5 this takes somewhere between 30 minutes and
+   an hour; the Pi will work hard, and that's fine:
+
+   ```bash
+   cargo build --locked --release
+   ```
+
+4. Install the resulting binary to `/usr/local/bin`:
+
+   ```bash
+   sudo install -m 0755 -o root -g root -t /usr/local/bin ./target/release/electrs
+   electrs --version
+   ```
+
+## Service user and data directory [#service-user-and-data-directory]
+
+Like `bitcoind`, Electrs runs as its own user with no shell password
+and a tidy data directory on the SSD.
+
+```bash
+sudo adduser --disabled-password --gecos "" electrs
+sudo adduser electrs bitcoin
+sudo mkdir /data/electrs
+sudo chown -R electrs:electrs /data/electrs
+```
+
+The `bitcoin` group membership is what lets Electrs read
+`/data/bitcoin/.cookie` for RPC auth.
+
+## Configuration [#configuration]
+
+1. Switch to the `electrs` user and open a fresh config:
+
+   ```bash
+   sudo su - electrs
+   nano /data/electrs/electrs.conf
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: electrs configuration
+   # /data/electrs/electrs.conf
+
+   # Bitcoin Core, uses the .cookie for auth (group-readable)
+   network = "bitcoin"
+   daemon_dir = "/data/bitcoin"
+   daemon_rpc_addr = "127.0.0.1:8332"
+   daemon_p2p_addr = "127.0.0.1:8333"
+
+   # Electrum protocol endpoint
+   electrum_rpc_addr = "127.0.0.1:50001"
+   db_dir = "/data/electrs/db"
+
+   # Logging
+   log_filters = "INFO"
+   timestamp = true
+   ```
+
+3. Do a first dry run to make sure the config is sane and Electrs
+   can talk to Bitcoin Core. It'll immediately start indexing, that
+   is expected and will take hours, but you only need to see the
+   first few lines of progress before you cancel:
+
+   ```bash
+   electrs --conf /data/electrs/electrs.conf
+   ```
+
+   Within a few seconds you should see lines like
+   `serving Electrum RPC on 127.0.0.1:50001` and
+   `indexing 2000 blocks: [1..2000]`. Good. Hit `Ctrl`-`C` and exit
+   back to `admin`:
+
+   ```bash
+   exit
+   ```
+
+## Systemd unit [#systemd-unit]
+
+1. As `admin`, create the unit file:
+
+   ```bash
+   sudo nano /etc/systemd/system/electrs.service
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: systemd unit for electrs
+   # /etc/systemd/system/electrs.service
+
+   [Unit]
+   Description=Electrs daemon
+   Wants=bitcoind.service
+   After=bitcoind.service
+
+   [Service]
+   ExecStart=/usr/local/bin/electrs --conf /data/electrs/electrs.conf
+
+   Type=simple
+   Restart=always
+   TimeoutSec=120
+   RestartSec=30
+   KillMode=process
+
+   User=electrs
+   RuntimeDirectory=electrs
+   RuntimeDirectoryMode=0710
+
+   # Hardening
+   PrivateTmp=true
+   PrivateDevices=true
+   MemoryDenyWriteExecute=true
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+3. Enable and start:
+
+   ```bash
+   sudo systemctl enable electrs
+   sudo systemctl start electrs
+   ```
+
+4. Watch it index in real time (`Ctrl`-`C` to exit):
+
+   ```bash
+   sudo journalctl -f -u electrs
+   ```
+
+<Callout type="warn" title="Electrs must finish indexing before you connect a wallet">
+  The first index pass walks the entire chain and builds the address
+  index on disk. On a Pi 5 with an SSD plan on **eight to twelve
+  hours**; on a Pi 4, closer to a day. Don't try to connect Sparrow
+  until the log quiets down and Electrs reports a caught-up tip,
+  pointing a wallet at an Electrum server that's still indexing will
+  just time out.
+</Callout>
+
+## TLS on the LAN with stunnel [#tls-on-the-lan-with-stunnel]
+
+Sparrow and other wallets connect to Electrum servers over TLS on
+port 50002. Electrs itself serves plaintext on 50001, which is
+fine *inside* the Pi, but you want the network traffic encrypted
+even on your home LAN. `stunnel` is a tiny, purpose-built proxy that
+wraps a plain TCP socket in TLS and has been doing exactly that for
+two decades.
+
+### Install stunnel [#install-stunnel]
+
+```bash
+sudo apt install stunnel4
+```
+
+### Mint a self-signed certificate [#mint-a-self-signed-certificate]
+
+stunnel doesn't do automatic CA issuance the way Caddy does for HTTP.
+You generate a self-signed certificate once and point the config at
+it. This takes a single command:
+
+```bash
+sudo openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+  -keyout /etc/stunnel/electrs.key \
+  -out /etc/stunnel/electrs.crt \
+  -subj "/CN=raspibolt.local"
+sudo chmod 600 /etc/stunnel/electrs.key
+```
+
+Ten-year validity is fine for a LAN certificate. Wallets will warn
+once that the certificate isn't from a public CA, you accept it,
+and they remember it from then on.
+
+### Configure stunnel [#configure-stunnel]
+
+1. Create the service config:
+
+   ```bash
+   sudo nano /etc/stunnel/electrs.conf
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: stunnel TLS wrapper for Electrs
+   # /etc/stunnel/electrs.conf
+
+   pid = /var/run/stunnel4/electrs.pid
+
+   [electrs]
+   accept = 50002
+   connect = 127.0.0.1:50001
+   cert = /etc/stunnel/electrs.crt
+   key = /etc/stunnel/electrs.key
+   ```
+
+3. Enable and start:
+
+   ```bash
+   sudo systemctl enable stunnel4
+   sudo systemctl restart stunnel4
+   ```
+
+4. Open the firewall for Electrum over TLS:
+
+   ```bash
+   sudo ufw allow 50002/tcp comment 'Electrum SSL'
+   ```
+
+<Callout type="info" title="Self-signed is fine on the LAN">
+  Wallets will flag the certificate the first time, that's expected.
+  You accept it manually once (Sparrow does this well) or pin the
+  certificate fingerprint in the wallet config. Getting a public-CA
+  certificate would require a real domain name and DNS setup that most
+  home networks don't have. Internal CA plus first-use trust is the
+  sane default here.
+</Callout>
+
+**Main takeaway:** Electrs is indexing on `:50001`, stunnel wraps it
+in TLS on `:50002`, and the firewall lets LAN wallets in. The next
+page points Sparrow at it.
+
+## Remote access over Tor (optional) [#remote-access-over-tor-optional]
+
+You can reach your Electrum server from outside the home network by
+exposing it as a Tor hidden service. The wallet will need Tor
+running locally too.
+
+1. Add a stanza to `/etc/tor/torrc`:
+
+   ```bash
+   sudo nano /etc/tor/torrc
+   ```
+
+   ```text
+   # Hidden service: Electrum
+   HiddenServiceDir /var/lib/tor/hidden_service_electrs/
+   HiddenServiceVersion 3
+   HiddenServicePort 50002 127.0.0.1:50002
+   ```
+
+2. Reload Tor and read the generated `.onion` address:
+
+   ```bash
+   sudo systemctl reload tor
+   sudo cat /var/lib/tor/hidden_service_electrs/hostname
+   ```
+
+   Save that `abcdefg...xyz.onion` in your password manager alongside
+   the one you may already have for SSH. The desktop-wallet page
+   shows how to connect Sparrow to it.
+
+## Updating Electrs later [#updating-electrs-later]
+
+Upgrades follow the same pattern as the first build: check the
+[release notes](https://github.com/romanz/electrs/blob/master/RELEASE-NOTES.md),
+bump `0.11.1` in `lib/versions.ts`, then:
+
+```bash
+cd /home/admin/rust/electrs
+git clean -xfd
+git fetch
+git checkout v0.11.1
+git verify-tag v0.11.1
+cargo clean
+cargo build --locked --release
+sudo cp /usr/local/bin/electrs /usr/local/bin/electrs.old
+sudo install -m 0755 -o root -g root -t /usr/local/bin ./target/release/electrs
+sudo systemctl restart electrs
+```
+
+Keep the old binary around until the new one has served traffic
+for a few hours, rolling back is as simple as copying
+`electrs.old` back on top.

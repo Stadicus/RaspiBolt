@@ -1,0 +1,15 @@
+# LNDg (/docs/bonus/lightning/lndg)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/lightning/lndg.md)
+  while we port it over.
+</Callout>
+
+[LNDg](https://github.com/cryptosharks131/lndg) is a lightweight web
+interface for LND aimed at routing-node operators. It surfaces
+channel and forwarding data and can automate rebalancing, fee
+adjustments, and channel opens so you spend less time manually
+running `lncli` commands.

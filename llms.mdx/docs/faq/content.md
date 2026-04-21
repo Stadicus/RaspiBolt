@@ -1,0 +1,147 @@
+# FAQ (/docs/faq)
+
+
+
+Short answers to the questions that come up most often. If yours
+isn't here, the [Telegram group](https://t.me/raspibolt) and the
+[GitHub issues](https://github.com/raspibolt/raspibolt/issues) are
+the two places to ask.
+
+## Can I get rich by routing Lightning payments? [#can-i-get-rich-by-routing-lightning-payments]
+
+Nobody really knows. Probably not. Routing fees on a well-placed
+node cover electricity and a bit of the hardware, not much more.
+Run a Lightning node because you want payments to work, not
+because you want a yield-bearing business. Enjoy the ride.
+
+## Can I read the Ext4 SSD on a Windows computer? [#can-i-read-the-ext4-ssd-on-a-windows-computer]
+
+Ext4 isn't compatible with Windows out of the box. Tools like
+[Linux File Systems for Windows](https://www.paragon-software.com/home/linuxfs-windows/)
+(Paragon, 10-day free trial) let you mount the drive read/write. On
+macOS, [extFS for Mac](https://www.paragon-software.com/home/extfs-mac/)
+does the same.
+
+If you just need to copy files off the drive once, plugging it into
+another Linux box, or the Pi itself, is usually the path of least
+resistance.
+
+## Can I migrate an older RaspiBolt to v4? [#can-i-migrate-an-older-raspibolt-to-v4]
+
+Not cleanly. v4 is built on Debian 13 "Trixie" with a different
+package set, a different reverse proxy, and a different layout for
+secrets and data directories. The safest upgrade is a **fresh
+install**, then restore the parts that are hard to recreate.
+
+The things worth keeping from an older node:
+
+* **LND data** (`/data/lnd` or `/mnt/ext/lnd`, depending on version)
+* **Static channel backup** (`channel.backup`)
+* **Seed phrase and passwords** (you wrote those down, right?)
+
+### Back up LND before you start [#back-up-lnd-before-you-start]
+
+<Callout type="warn" title="Never run two LND instances on the same seed">
+  Once you've copied the LND data directory off the old node, move it
+  aside so the old node can't start again by accident. A second LND
+  node broadcasting stale channel state means force-closed channels
+  and, in the worst case, lost funds.
+</Callout>
+
+On the old node:
+
+```bash
+sudo mkdir /mnt/thumbdrive
+lsblk -pli
+sudo mount /dev/sdb1 /mnt/thumbdrive/
+sudo rsync -rhvPog --append-verify /data/lnd /mnt/thumbdrive/
+sudo mv /data/lnd /data/lnd-do-not-start-again
+```
+
+Grab the static channel backup file too, it's cheap insurance
+against anything going wrong with the full directory restore.
+
+### Restore onto the new node [#restore-onto-the-new-node]
+
+Finish the v4 setup through the Lightning section, but **don't
+create a wallet** when LND first starts. Stop LND, mount the
+thumb drive, and copy the backup into place:
+
+```bash
+sudo systemctl stop lnd
+sudo mount /dev/sdb1 /mnt/thumbdrive/
+sudo rsync -rhvPog --append-verify /mnt/thumbdrive/lnd /data/
+sudo chown -R lnd:lnd /data/lnd
+sudo systemctl start lnd
+```
+
+LND should come up with your existing wallet, peers, and channels.
+
+### What about the Bitcoin blockchain? [#what-about-the-bitcoin-blockchain]
+
+Bitcoin Core doesn't need a backup, it can download and verify the
+entire chain from scratch. That takes a few days on a Pi, so if you
+want to skip the resync, `rsync` the old `bitcoin` data directory
+across from the old drive before you point the new node at it.
+
+## What do all the Linux commands do? [#what-do-all-the-linux-commands-do]
+
+A short reference for commands that show up repeatedly in this
+guide. For any specific one, `man <command>` has the full manual,
+type `q` to exit.
+
+| Command      | What it does                   | Example                              |
+| ------------ | ------------------------------ | ------------------------------------ |
+| `cd`         | change directory               | `cd /home/bitcoin`                   |
+| `ls`         | list directory contents        | `ls -la /data`                       |
+| `cp`         | copy                           | `cp file.txt newfile.txt`            |
+| `mv`         | move or rename                 | `mv file.txt moved.txt`              |
+| `rm`         | remove                         | `rm tempfile.txt`                    |
+| `mkdir`      | make directory                 | `mkdir /home/bitcoin/new`            |
+| `ln -s`      | make symlink                   | `ln -s /target /link`                |
+| `sudo`       | run as superuser               | `sudo nano textfile.txt`             |
+| `su`         | switch user                    | `sudo su bitcoin`                    |
+| `chown`      | change owner                   | `chown bitcoin:bitcoin myfile.txt`   |
+| `chmod`      | change permissions             | `chmod +x script.sh`                 |
+| `nano`       | edit a text file               | `nano textfile.txt`                  |
+| `tar`        | archive tool                   | `tar -cvf a.tar file1.txt file2.txt` |
+| `exit`       | leave current shell            | `exit`                               |
+| `systemctl`  | control a systemd service      | `sudo systemctl start bitcoind`      |
+| `journalctl` | read systemd logs              | `sudo journalctl -u bitcoind`        |
+| `htop`       | live process and resource view | `htop`                               |
+| `shutdown`   | power off or reboot            | `sudo shutdown -r now`               |
+
+## Where can I learn more about Bitcoin and Lightning? [#where-can-i-learn-more-about-bitcoin-and-lightning]
+
+A few hand-picked starting points that actually teach rather than
+pitch:
+
+* [What is Bitcoin?](https://bitcoinmagazine.com/guides/what-bitcoin): Bitcoin Magazine's introduction.
+* [Understanding the Lightning Network](https://bitcoinmagazine.com/articles/understanding-the-lightning-network-part-building-a-bidirectional-payment-channel-1464710791):
+  the original walkthrough of payment channels.
+* [Bitcoin resources](https://www.lopp.net/bitcoin-information.html)
+  and [Lightning resources](https://www.lopp.net/lightning-information.html)
+  by Jameson Lopp.
+
+## How do I give the Pi a fixed IP address? [#how-do-i-give-the-pi-a-fixed-ip-address]
+
+The cleanest answer is to set it in your router, assign a DHCP
+reservation for the Pi's MAC address so it always lands on the same
+IP. Every consumer router can do this; the menu is usually called
+"DHCP reservations" or "static leases".
+
+If your router can't, configure the address directly on the Pi via
+NetworkManager (the default on Debian 13 "Trixie"):
+
+```bash
+sudo nmcli connection modify "Wired connection 1" \
+  ipv4.addresses 192.168.1.50/24 \
+  ipv4.gateway 192.168.1.1 \
+  ipv4.dns 192.168.1.1 \
+  ipv4.method manual
+sudo nmcli connection up "Wired connection 1"
+```
+
+Replace the addresses with values that fit your network, and pick
+one **outside** the DHCP range your router hands out, otherwise
+you'll collide with some other device the next time it boots.

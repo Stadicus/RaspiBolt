@@ -1,0 +1,241 @@
+# Privacy (/docs/raspberry-pi/privacy)
+
+
+
+Why hand the whole world your home IP address along with every
+Bitcoin transaction your node broadcasts? You don't have to. Install
+and configure **Tor** so Bitcoin Core and Lightning can route their
+peer-to-peer traffic through the Tor network. Your IP stays off the
+public Bitcoin and Lightning peer maps.
+
+Then add **Tailscale**, a mesh VPN, so you can SSH into the Pi
+from anywhere without opening a single port on your router.
+
+## Why Tor [#why-tor]
+
+Running a node at home makes you a first-class peer on the Bitcoin
+and Lightning networks. That's the good news. The flip side is that
+without privacy work, it also broadcasts to the world that somebody
+at **your** IP address runs a Lightning node, and services like
+[iplocation.net](https://www.iplocation.net) happily turn that IP
+into a rough physical location.
+
+**Tor** (The Onion Router) is a free, open-source anonymity network
+maintained by the [Tor Project](https://www.torproject.org). Traffic
+is encrypted in layers and bounced through a handful of volunteer
+relays, so no single hop sees both where it came from and where it's
+going. Bitcoin Core and LND will plug into it later in the guide.
+
+## Install Tor [#install-tor]
+
+Add the Tor Project's official repository rather than leaning on the
+Debian package, this way you get current Tor releases straight from
+upstream.
+
+1. Fetch the Tor Project's signing key, dearmor it into a keyring
+   file, and clean up the original:
+
+   ```bash
+   sudo wget -qO /usr/share/keyrings/deb.torproject.org-keyring.gpg.asc \
+     https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc
+   sudo gpg --dearmor \
+     -o /usr/share/keyrings/deb.torproject.org-keyring.gpg \
+     /usr/share/keyrings/deb.torproject.org-keyring.gpg.asc
+   sudo rm /usr/share/keyrings/deb.torproject.org-keyring.gpg.asc
+   ```
+
+2. Tell apt about the new repository. Modern Debian prefers the
+   **deb822** format, looks unfamiliar compared to the old one-line
+   `sources.list` syntax, but it's just one file, one stanza,
+   clearly signed:
+
+   ```bash
+   sudo nano /etc/apt/sources.list.d/tor.sources
+   ```
+
+   Paste, save, and exit:
+
+   ```text
+   Types: deb deb-src
+   URIs: https://deb.torproject.org/torproject.org/
+   Suites: trixie
+   Components: main
+   Architectures: arm64
+   Signed-By: /usr/share/keyrings/deb.torproject.org-keyring.gpg
+   ```
+
+3. Install `tor` along with the Tor Project's keyring package (which
+   keeps the signing key up to date automatically):
+
+   ```bash
+   sudo apt update
+   sudo apt install tor deb.torproject.org-keyring
+   ```
+
+4. Confirm Tor landed:
+
+   ```bash
+   tor --version
+   ```
+
+   Expected output (version number will drift):
+
+   ```text
+   Tor version 0.4.8.13.
+   ```
+
+<Callout type="info" title="Why not apt-transport-https?">
+  Older Tor install guides want you to `apt install apt-transport-https`
+  first. On Trixie that package is a no-op, HTTPS support is built
+  into `apt` itself. Skip it with a clear conscience.
+</Callout>
+
+## Configure Tor [#configure-tor]
+
+Bitcoin Core will talk to the Tor daemon through Tor's **control
+port**. Enable that port and allow cookie-based authentication so
+local services can use it without a password.
+
+1. Open the Tor configuration:
+
+   ```bash
+   sudo nano /etc/tor/torrc
+   ```
+
+2. Uncomment or add these lines:
+
+   ```text
+   # Enable the control port used by Bitcoin Core
+   ControlPort 9051
+   CookieAuthentication 1
+   CookieAuthFileGroupReadable 1
+   ```
+
+3. Reload Tor so the changes take effect:
+
+   ```bash
+   sudo systemctl reload tor
+   ```
+
+4. Verify Tor is listening on both the SOCKS port (9050) and the
+   control port (9051):
+
+   ```bash
+   sudo ss -tulpn | grep tor | grep LISTEN
+   ```
+
+   Expected output:
+
+   ```text
+   tcp LISTEN 0 4096 127.0.0.1:9050 0.0.0.0:* users:(("tor",pid=1847,fd=6))
+   tcp LISTEN 0 4096 127.0.0.1:9051 0.0.0.0:* users:(("tor",pid=1847,fd=7))
+   ```
+
+5. Optional, tail Tor's live log to watch it at work:
+
+   ```bash
+   sudo journalctl -f -u tor@default
+   ```
+
+But not every byte of traffic is routed through Tor yet. What
+you've done is open the door, applications that opt in (Bitcoin
+Core, LND, and friends later in the guide) can now use it.
+
+**Main takeaway:** Tor is running and ready; the apps that matter
+will plug into it later in the guide.
+
+## SSH from anywhere with Tailscale [#ssh-from-anywhere-with-tailscale]
+
+Getting into the Pi from the sofa is easy, it's on your LAN. Getting
+into it from a café, a friend's house, or another country is
+traditionally a pain: port forwarding, dynamic DNS, firewall
+juggling, and a stable home IP you probably don't have.
+
+[Tailscale](https://tailscale.com) sidesteps the whole mess. It
+builds a small, private mesh VPN between **your** devices using
+WireGuard. The Pi gets a stable private address (`100.x.y.z`) that
+only devices you've authorised can reach. Your router does nothing.
+Your ISP sees encrypted traffic to a few discovery servers. Anyone
+on the public internet sees nothing.
+
+<Callout type="info" title="Prefer a fully self-hosted control plane?">
+  Tailscale's control plane is a proprietary SaaS. The data path is
+  still direct device-to-device WireGuard, Tailscale never sees your
+  traffic, but device authorisation runs through their servers. If
+  that doesn't fit your threat model,
+  [Headscale](https://github.com/juanfont/headscale) is a fully open
+  source, self-hosted control plane that speaks the same protocol.
+  The Pi-side setup below works unchanged; you just point
+  `tailscale up` at your Headscale server with `--login-server`.
+  Running Headscale itself is its own project, beyond this guide.
+</Callout>
+
+### Install Tailscale on the Pi [#install-tailscale-on-the-pi]
+
+Add Tailscale's apt repository, install the client, and start it:
+
+```bash
+curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list >/dev/null
+sudo apt update
+sudo apt install -y tailscale
+```
+
+Bring the Pi onto your tailnet. This prints a one-time URL,
+open it on any device, log in (a personal Tailscale account is
+free for up to 100 devices), and authorise the Pi:
+
+```bash
+sudo tailscale up
+```
+
+Confirm it's connected and read its tailnet IP:
+
+```bash
+tailscale status
+tailscale ip -4
+```
+
+You'll see a stable `100.x.y.z` address. That address never
+changes as long as the Pi stays on your tailnet, that's the
+whole point.
+
+<Callout type="info" title="MagicDNS: name, not number">
+  In the [Tailscale admin console](https://login.tailscale.com/admin/dns),
+  enable **MagicDNS**. Your Pi then becomes reachable as
+  `raspibolt.<your-tailnet>.ts.net` from any other device on the
+  tailnet, no more memorising `100.x.y.z`. You can also give it a
+  custom short name from the same console.
+</Callout>
+
+### Connect from your computer or phone [#connect-from-your-computer-or-phone]
+
+Install Tailscale on whatever device you want to SSH **from**:
+
+* **macOS:** `brew install tailscale && sudo tailscale up`, or the Mac App Store app.
+* **Linux:** the same apt commands above, swapping `trixie` for your distribution's codename. Or the one-liner `curl -fsSL https://tailscale.com/install.sh | sh`.
+* **Windows:** installer from [tailscale.com/download](https://tailscale.com/download).
+* **iOS / Android:** Tailscale in the App Store or Play Store.
+
+Log in with the same account. Once both devices are on the tailnet,
+SSH to the Pi's tailnet IP (or MagicDNS name if you enabled it):
+
+```bash
+ssh admin@100.x.y.z
+```
+
+Same SSH key, same hardened `sshd` config, now reachable from
+anywhere without opening a port.
+
+<Callout type="warn" title="Don't expose sshd publicly">
+  Tailscale makes remote SSH so frictionless that the old "open
+  port 22 to the internet" pattern stops being necessary. Keep your
+  ufw rule scoped to the LAN (`192.168.0.0/24` or similar), the
+  tailnet interface bypasses ufw by default on a fresh install, so
+  Tailscale devices can still reach the Pi without the firewall
+  being in the way.
+</Callout>
+
+**Main takeaway:** Tor keeps Bitcoin and Lightning peer traffic
+private. Tailscale keeps your own remote access private and
+convenient. Different jobs, different tools, you want both.

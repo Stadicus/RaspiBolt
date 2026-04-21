@@ -1,0 +1,15 @@
+# LNbits (/docs/bonus/lightning/lnbits)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/lightning/lnbits.md)
+  while we port it over.
+</Callout>
+
+[LNbits](https://github.com/lnbits/lnbits) is a free and open-source
+Lightning wallet and accounts system. It sits on top of your node
+and lets you carve out sub-wallets with their own balances, APIs,
+and third-party integrations, handy for splitting a family node,
+powering a point of sale, or experimenting with LN extensions.

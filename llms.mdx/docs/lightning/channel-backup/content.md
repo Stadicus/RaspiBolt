@@ -1,0 +1,339 @@
+# Channel backup (/docs/lightning/channel-backup)
+
+
+
+The 24-word seed restores your on-chain wallet. It does **not**
+restore your Lightning channels. For that you need the **Static
+Channel Backup**, a small file LND updates every time a channel
+state changes, and the missing half of a complete recovery plan.
+
+This page explains what the SCB can and can't do, walks you
+through an automated offsite sync, and covers the restore flow.
+
+## What the SCB actually does [#what-the-scb-actually-does]
+
+The Static Channel Backup (SCB) is a single file:
+`/data/lnd/data/chain/bitcoin/mainnet/channel.backup`. LND rewrites
+it every time a channel opens, closes, or changes state. It
+contains enough information, each peer's pubkey, the channel
+funding outpoint, the commit transaction, for a **new** LND
+instance to know who to ask for funds back.
+
+It does **not** re-open your channels. It does **not** give you
+access to off-chain liquidity on a fresh node. What it does, on
+restore, is send a request to every channel peer asking them to
+force-close the channel at the latest state they know about. Your
+funds then land in your on-chain wallet after the usual
+commit-timeout.
+
+The consequences matter:
+
+* **Recovery depends on your peers being online and honest.** An
+  offline peer means locked funds until they come back. A
+  malicious peer could, in principle, refuse.
+* **Your SCB must be current.** If the peer closes at a state
+  newer than the one in your SCB, LND sees a state it doesn't
+  recognise and refuses to claim. You'll still get a force-close
+  from the peer, just the slow path, not the SCB-accelerated one.
+* **Never use the SCB on a node that is still running the same
+  channels elsewhere.** Restoring triggers force-closes; doing
+  that against a node that thinks the channels are fine gets your
+  balances punished to the peer. Treat the SCB like a one-shot
+  recovery tool.
+
+<Callout type="warn" title="The SCB is only useful if it's offsite">
+  A channel backup that lives on the same SSD as LND is no backup
+  at all, the scenario it's meant to survive is the SSD dying. The
+  whole point of this page is to get a copy of `channel.backup` onto
+  a machine that isn't the Pi.
+</Callout>
+
+## Strategy [#strategy]
+
+This guide sets up one thing: a **systemd path unit** that watches
+`channel.backup&#x60; for changes and an **`scp` script** that ships
+the file to a remote host on every update. No polling, no cron,
+no extra long-running process, systemd notices the file change,
+fires the service, the service copies the file, and goes away.
+
+You need:
+
+* A **remote host** you trust, another machine on your LAN, a
+  VPS you own, an always-on box at a friend's place, or a cheap
+  home NAS. Anywhere `ssh` can reach.
+* An **SSH key** on the Pi that you've added to
+  `~/.ssh/authorized_keys` on the remote host.
+
+The rest of this page assumes the remote host is at
+`backup@10.0.0.50` with the SCB going into
+`/home/backup/raspibolt-scb/`. Substitute your own host, user,
+and path.
+
+## Set up the SSH key for lnd [#set-up-the-ssh-key-for-lnd]
+
+The sync has to run as the `lnd` user, that's the only account
+that can read `channel.backup`. So the SSH key lives in
+`/home/lnd/.ssh/`.
+
+1. As `admin`, become `lnd` and generate a key (no passphrase,
+   a passphrase would defeat unattended sync):
+
+   ```bash
+   sudo su - lnd
+   ssh-keygen -t ed25519 -f /home/lnd/.ssh/scb-backup -N ""
+   cat /home/lnd/.ssh/scb-backup.pub
+   ```
+
+2. Copy the public key into the remote host's
+   `authorized_keys`. On the **remote host**, run:
+
+   ```bash
+   mkdir -p ~/.ssh
+   chmod 700 ~/.ssh
+   echo "ssh-ed25519 AAAA...your-pubkey-here... lnd@raspibolt" >> ~/.ssh/authorized_keys
+   chmod 600 ~/.ssh/authorized_keys
+   mkdir -p ~/raspibolt-scb
+   ```
+
+3. Back on the **Pi** as `lnd`, do the first connection by hand
+   so the remote host's fingerprint lands in `known_hosts`:
+
+   ```bash
+   ssh -i /home/lnd/.ssh/scb-backup backup@10.0.0.50 "echo ok"
+   ```
+
+   Accept the fingerprint. You should see `ok`. Exit the `lnd`
+   session:
+
+   ```bash
+   exit
+   ```
+
+## Write the sync script [#write-the-sync-script]
+
+1. As `admin`, create the script:
+
+   ```bash
+   sudo nano /usr/local/bin/scb-sync
+   ```
+
+2. Paste:
+
+   ```bash
+   #!/bin/bash
+   # RaspiBolt: push channel.backup to an offsite host on change
+   # /usr/local/bin/scb-sync
+
+   set -euo pipefail
+
+   SRC="/data/lnd/data/chain/bitcoin/mainnet/channel.backup"
+   REMOTE_USER="backup"
+   REMOTE_HOST="10.0.0.50"
+   REMOTE_DIR="/home/backup/raspibolt-scb"
+   SSH_KEY="/home/lnd/.ssh/scb-backup"
+
+   STAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+
+   # Push a timestamped copy and also overwrite a "latest" file.
+   # The timestamped copies let you roll back; "latest" is what
+   # you'd grab in a real recovery.
+   scp -i "$SSH_KEY" -o StrictHostKeyChecking=yes \
+     "$SRC" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/channel-${STAMP}.backup"
+   scp -i "$SSH_KEY" -o StrictHostKeyChecking=yes \
+     "$SRC" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/channel.backup.latest"
+
+   logger -t scb-sync "channel.backup synced to ${REMOTE_HOST} as channel-${STAMP}.backup"
+   ```
+
+3. Make it executable:
+
+   ```bash
+   sudo chmod +x /usr/local/bin/scb-sync
+   ```
+
+## systemd path + service [#systemd-path--service]
+
+A **path unit** watches a file. When the file changes, systemd
+activates a matching **service unit**. The two go together.
+
+1. Create the service unit. This runs the sync script once and
+   exits:
+
+   ```bash
+   sudo nano /etc/systemd/system/scb-sync.service
+   ```
+
+   Paste:
+
+   ```ini
+   # RaspiBolt: ship channel.backup offsite on change
+   # /etc/systemd/system/scb-sync.service
+
+   [Unit]
+   Description=Sync LND channel.backup to offsite host
+   After=lnd.service
+
+   [Service]
+   Type=oneshot
+   User=lnd
+   ExecStart=/usr/local/bin/scb-sync
+   ```
+
+2. Create the path unit that triggers it:
+
+   ```bash
+   sudo nano /etc/systemd/system/scb-sync.path
+   ```
+
+   Paste:
+
+   ```ini
+   # RaspiBolt: watch channel.backup for changes
+   # /etc/systemd/system/scb-sync.path
+
+   [Unit]
+   Description=Watch LND channel.backup for changes
+   After=lnd.service
+
+   [Path]
+   PathChanged=/data/lnd/data/chain/bitcoin/mainnet/channel.backup
+   Unit=scb-sync.service
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+3. Enable and start the **path** unit (not the service, systemd
+   activates the service for you on file change):
+
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable scb-sync.path
+   sudo systemctl start scb-sync.path
+   sudo systemctl status scb-sync.path
+   ```
+
+## Test it [#test-it]
+
+1. As `admin`, follow the service journal in one SSH session:
+
+   ```bash
+   sudo journalctl -f -u scb-sync.service
+   ```
+
+2. In a second session, touch the backup file to simulate a
+   change. `touch` updates the mtime, which is enough to fire
+   `PathChanged`:
+
+   ```bash
+   sudo -u lnd touch /data/lnd/data/chain/bitcoin/mainnet/channel.backup
+   ```
+
+3. In the first session you should see
+   `Started Sync LND channel.backup to offsite host`, the scp
+   lines, and a clean exit.
+
+4. On the remote host, list the target directory. You should see
+   the timestamped file plus `channel.backup.latest`:
+
+   ```bash
+   ls -la ~/raspibolt-scb/
+   ```
+
+5. Keep the first session running for the first real channel
+   open or close. When LND updates the SCB for real, you should
+   see a fresh sync event land the same way.
+
+<Callout type="info" title="Rotate old copies">
+  Every channel state change produces a new file. Over years that
+  adds up, not a lot of bytes (the SCB is typically well under
+  100 KB), but a lot of entries. A cron job on the remote host that
+  keeps the last 100 timestamped copies plus `channel.backup.latest`
+  is plenty.
+</Callout>
+
+## Restore flow [#restore-flow]
+
+You only ever run through this when the Pi is toast. The high
+level is: fresh Pi, same 24-word seed, latest SCB, pray.
+
+1. Build a new Pi following the earlier sections. Get to the
+   point where LND is installed, `lnd.conf` is in place, and the
+   service is enabled, but **do not** run `lncli create` yet.
+
+2. Pull `channel.backup.latest` from your remote host onto the
+   new Pi:
+
+   ```bash
+   sudo -u lnd scp backup@10.0.0.50:/home/backup/raspibolt-scb/channel.backup.latest /tmp/channel.backup
+   ```
+
+3. Start LND in the foreground as the `lnd` user:
+
+   ```bash
+   sudo su - lnd
+   lnd
+   ```
+
+4. In a second session, create the wallet from the existing seed
+   **with** the SCB attached. The `--recovery_window` tells LND
+   how many derivation steps to scan for on-chain activity,
+   10000 is plenty for a home node. The `--multi_file` flag
+   tells `lncli create` to also accept an SCB:
+
+   ```bash
+   sudo su - lnd
+   lncli create
+   ```
+
+   Answer `y` to the "existing cipher seed" prompt and paste the
+   24 words. When prompted for an SCB, point at `/tmp/channel.backup`.
+
+   (Alternatively, create the wallet first and then run
+   `lncli restorechanbackup --multi_file /tmp/channel.backup`.
+   Same end result.)
+
+5. Watch the log. LND will reach out to each peer, ask them to
+   force-close at the latest state they know about, and wait.
+   The on-chain commit transactions take the usual time to
+   confirm; expect funds to land in your on-chain wallet over the
+   following hours or days, not minutes.
+
+6. Once all channels have settled, you can reopen new channels
+   against the restored on-chain balance, you're back in
+   business.
+
+<Callout type="warn" title="A stale SCB can cost you sats">
+  If the SCB you restore from is older than what your peers
+  actually have, LND will ask for a close at an outdated state.
+  Well-behaved peers will still close at the latest state they
+  know about (to their own benefit), and the amount you get back
+  is whatever the **peer** says you should, not whatever you
+  thought the balance was.
+
+  The sync above is designed to keep the SCB fresh to within
+  seconds. If you ever see a gap of days between the last sync and
+  "now", something broke, and you need to know about it. A small
+  cron job on the remote host that alerts on stale files is a good
+  idea.
+</Callout>
+
+## Close channels gracefully when you can [#close-channels-gracefully-when-you-can]
+
+Best-case recovery is the one you don't need: close your channels
+on your own terms **before** decommissioning a node. A cooperative
+close settles at the latest state with both peers agreeing,
+doesn't trigger commit-delay timeouts, and pays lower on-chain
+fees. Planning to retire the Pi or move to new hardware?
+
+```bash
+lncli listchannels
+lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
+```
+
+Close them one by one before you touch anything else.
+
+**Main takeaway:** the seed is half of recovery, the SCB is the
+other half, and the SCB is only useful if it lives somewhere the
+Pi's SSD can't take with it. Set up the sync, test it, and keep
+an eye on the freshness.

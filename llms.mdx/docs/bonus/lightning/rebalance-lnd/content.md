@@ -1,0 +1,15 @@
+# rebalance-lnd (/docs/bonus/lightning/rebalance-lnd)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/lightning/rebalance-lnd.md)
+  while we port it over.
+</Callout>
+
+[rebalance-lnd](https://github.com/C-Otto/rebalance-lnd) by Carsten
+Otto is a focused CLI tool for circular rebalancing on LND: it sends
+sats out of channels with too much outbound liquidity and routes
+them back through channels that need inbound. Useful when you want
+predictable, scriptable rebalances without a full automation stack.

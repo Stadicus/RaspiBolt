@@ -1,0 +1,77 @@
+# Overview (/docs/lightning)
+
+
+
+So Bitcoin is running. Why bolt a second network on top of it?
+
+Because Bitcoin's base layer is deliberately slow and deliberately
+expensive. Every transaction lands in a block that thousands of
+nodes worldwide will validate and store forever, and that's exactly
+what you want for settling serious money, not for buying a coffee.
+The **Lightning Network** is the second layer that fixes the coffee
+problem: payments settle in milliseconds, cost fractions of a cent,
+and only touch the base chain when a channel opens or closes.
+
+This section turns your Bitcoin node into a Lightning node.
+
+## What you'll do [#what-youll-do]
+
+By the end of this section you'll have:
+
+* **LND** running as a systemd service, connected to bitcoind over
+  RPC + ZMQ, and routing its own peer traffic through Tor.
+* A **24-word seed** written down on paper and locked away, the
+  only rope back to your on-chain funds if the Pi dies.
+* **Ride The Lightning (RTL)** on `https://rtl.raspibolt.local`,
+  reachable from your LAN so you can manage channels in a browser.
+* **Zeus** on your phone, connected to the Pi over a private Tor
+  onion, full node control from wherever you are.
+* An **automated channel backup** that rsyncs your
+  `channel.backup` file to an offsite host every time it changes.
+
+Budget roughly **two to three hours** of hands-on time, most of it
+waiting for `npm install` and your first channel to confirm.
+
+## Assumptions [#assumptions]
+
+* You finished the [Bitcoin](/docs/bitcoin) section and `bitcoind` is
+  **fully synced**, Lightning won't initial-sync its graph against
+  a blockchain that's still catching up.
+* `bitcoind` exposes the RPC port on `127.0.0.1:8332` and the ZMQ
+  streams on ports `28332` and `28333`, exactly as configured in
+  [Bitcoin client](/docs/bitcoin/bitcoin-client).
+* **Tor** is installed and its SOCKS proxy is live on
+  `127.0.0.1:9050` (see [Privacy](/docs/raspberry-pi/privacy)).
+* **Caddy** is running as the reverse proxy for your LAN-only
+  services, installed earlier in the Bitcoin section.
+
+If you want to see where LND plugs into everything else before
+diving in, [Architecture](/docs/architecture) has the full picture.
+
+<Callout type="warn" title="This is where it gets financially real">
+  Up until now, a bad step on the Pi costs you a reinstall. A bad
+  step on Lightning can cost you satoshis. The 24-word seed LND
+  generates is the **only** way to recover on-chain funds, and a
+  stale channel backup can mean peers settle against you. Before you
+  send meaningful amounts to this node, read
+  [Channel backup](/docs/lightning/channel-backup), then actually
+  set the backup up. Don't skip it.
+</Callout>
+
+## Pages in this section [#pages-in-this-section]
+
+1. [Lightning client](/docs/lightning/lightning-client), download,
+   verify, and run LND 0.20.1-beta; create the wallet and seed;
+   set up auto-unlock.
+2. [Web app](/docs/lightning/web-app), install Node.js and RTL
+   0.15.6; point it at LND; expose it through Caddy.
+3. [Mobile app](/docs/lightning/mobile-app), set up a Tor hidden
+   service for LND's REST API and pair the Zeus phone app with it.
+4. [Channel backup](/docs/lightning/channel-backup), watch the
+   `channel.backup` file and ship a copy offsite on every change;
+   walk through the restore flow.
+
+When Lightning is up, keep an eye on it for a few days before
+committing serious sats. Channels that open smoothly don't always
+close smoothly, and you'll want to see a few state updates flow
+through the backup pipeline before trusting it.

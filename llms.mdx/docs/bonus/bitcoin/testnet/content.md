@@ -1,0 +1,14 @@
+# RaspiBolt on testnet (/docs/bonus/bitcoin/testnet)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/testnet.md)
+  while we port it over.
+</Callout>
+
+Running a testnet RaspiBolt lets you explore Bitcoin and Lightning
+with play-money coins. The guide highlights every configuration
+difference from the mainnet setup so you can build or test tools and
+integrations without the risk of losing real sats.

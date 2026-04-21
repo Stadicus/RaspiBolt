@@ -1,0 +1,15 @@
+# Circuit Breaker (/docs/bonus/lightning/circuit-breaker)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/lightning/circuit-breaker.md)
+  while we port it over.
+</Callout>
+
+[Circuit Breaker](https://github.com/lightningequipment/circuitbreaker)
+is a rate-limiting firewall for LND that protects against
+HTLC-flooding griefing attacks. You set per-peer limits, and Circuit
+Breaker refuses to forward HTLCs that would saturate a channel and
+lock your liquidity.

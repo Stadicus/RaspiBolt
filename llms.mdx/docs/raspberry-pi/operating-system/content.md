@@ -1,0 +1,150 @@
+# Operating system (/docs/raspberry-pi/operating-system)
+
+
+
+Time to breathe life into the hardware. You'll write Raspberry Pi OS
+to the SSD on your regular computer, pre-configure it with a user and
+SSH access, and boot the Pi for the very first time, all without
+ever connecting a screen or keyboard to it.
+
+## Which operating system? [#which-operating-system]
+
+Which flavour of Linux belongs on a node? You'll use &#x2A;*Raspberry Pi
+OS Lite (64-bit)**: a minimal, headless Debian-based system with no
+desktop environment. No wasted RAM on things you'll never see.
+
+It's based on &#x2A;*Debian 13 "Trixie"**, the current Debian stable
+release (since August 2025) and the same OS that powers a good slice
+of the internet's servers. Trixie gets security updates well into
+the 2030s. Because the guide only uses standard Debian commands,
+everything you learn here also applies to other Debian machines.
+
+<Callout type="info" title="Bookworm is now 'Legacy'">
+  In the Imager you'll also see Raspberry Pi OS based on Debian 12
+  "Bookworm" under the **Legacy** menu. Don't pick it, this guide
+  targets Trixie.
+</Callout>
+
+## Install Raspberry Pi Imager [#install-raspberry-pi-imager]
+
+The official [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
+handles the whole "write OS to SSD" dance with a friendly interface.
+This guide was written against **v1.9.4**; any recent version works.
+
+Download the Imager for your OS (macOS, Windows, or Linux), install
+it, and launch it.
+
+## Flash the operating system [#flash-the-operating-system]
+
+Plug the external SSD into your regular computer, then walk through
+the Imager one step at a time.
+
+1. In the &#x2A;*"Raspberry Pi device"*&#x2A; section, click &#x2A;*"Choose device"**
+   and select your model, **Raspberry Pi 5** (or Pi 4).
+2. In the &#x2A;*"Operating system"*&#x2A; section, click &#x2A;*"Choose OS"*&#x2A; and
+   select &#x2A;*"Raspberry Pi OS (64-bit)"** right at the top of the list.
+3. In the &#x2A;*"Storage"*&#x2A; section, click &#x2A;*"Choose storage"** and pick
+   your external SSD. Double-check, this drive will be wiped.
+4. Click &#x2A;*"NEXT"*&#x2A;. When the Imager asks about &#x2A;*"Use OS
+   customisation"*&#x2A;, click &#x2A;*"EDIT SETTINGS"**.
+
+## Pre-configure the system [#pre-configure-the-system]
+
+This is the clever part: you can set the hostname, create your user,
+hand over your Wi-Fi credentials, and enable SSH **before** the Pi
+even boots once. That's what "headless" means in practice. Sounds
+like black magic, but it's really just a small config file that the
+Pi reads on first boot.
+
+On the &#x2A;*"General"** tab:
+
+* **Set hostname**, choose a name for your node, for example
+  `raspibolt`. The Pi then answers to `raspibolt.local` from any
+  device on the same network that speaks mDNS (most do).
+* **Set username and password**, turn this on, enter the username
+  `admin`, and use your &#x2A;*password \[A]**. Every command in this
+  guide assumes the user is called `admin`.
+* **Configure wifi**, only if you plan to connect over Wi-Fi.
+  Enter the SSID and password, and set the two-letter country code
+  (e.g. `US`, `DE`, `CH`). Leave this blank if you'll use Ethernet,
+  which, if you're sitting near the router, is what you want.
+* **Set locale settings**, pick your timezone and keyboard layout.
+
+On the &#x2A;*"Services"** tab:
+
+* **Enable SSH*&#x2A;, check the box and select &#x2A;*"Use password
+  authentication"**. This lets you reach the Pi over the network
+  in the next section.
+
+On the &#x2A;*"Options"** tab:
+
+* Optional: uncheck &#x2A;*"Enable telemetry"** if you'd rather not send
+  usage data to the Raspberry Pi Foundation.
+
+Click &#x2A;*"SAVE"** to lock in the settings.
+
+## Write to the SSD [#write-to-the-ssd]
+
+Back on the main screen, the Imager asks &#x2A;*"Use OS customisation?"*&#x2A;.
+Click &#x2A;*"YES"*&#x2A;. Read the final warning, confirm you picked the
+right drive, and click &#x2A;*"YES"** again to start writing.
+
+The Imager writes the operating system and verifies every byte. When
+it reports &#x2A;*"Success"**, safely eject the SSD.
+
+## Boot your Pi [#boot-your-pi]
+
+1. Plug the SSD into a **USB 3 port** on the Pi (the blue ones,
+   USB 2 ports are not fast enough).
+2. If you skipped the Wi-Fi settings, connect an Ethernet cable.
+3. Power the Pi on by plugging in the USB-C power supply.
+
+The Pi boots straight from the SSD. No microSD card needed.
+
+<Callout type="info" title="Pi 5: USB boot is already enabled">
+  Every Pi 5 ships with USB boot enabled out of the box. The old
+  bootloader-on-microSD ritual is gone.
+
+  On a **Pi 4**, USB boot is enabled by default on any board shipped
+  after September 2020. If your Pi 4 is older and refuses to boot
+  from the SSD, see the section below on fixing the bootloader.
+</Callout>
+
+## Is it alive? [#is-it-alive]
+
+Keep an eye on the two LEDs on the Pi:
+
+* A solid **red** LED means the Pi is powered.
+* A flickering **green** LED means the SSD is being read, exactly
+  what you want. Boot takes 20-40 seconds on an SSD.
+* A **solid green** LED that never flickers usually means the Pi
+  didn't find anything bootable and is sitting there waiting.
+
+If the green LED is flickering, you're in business. Move on to the
+next page. Done.
+
+## If your Pi refuses to boot from USB [#if-your-pi-refuses-to-boot-from-usb]
+
+Some older Pi 4 boards shipped with a bootloader that can't boot
+from USB. You fix this once, using a microSD card, and then the Pi
+will happily boot from USB forever after.
+
+1. Grab a microSD card (any size, the data is erased).
+2. On your regular computer, launch Raspberry Pi Imager.
+3. Click &#x2A;*"Choose device"** and pick your Pi model.
+4. Click &#x2A;*"Choose OS"*&#x2A; → &#x2A;*"Misc utility images"*&#x2A; →
+   &#x2A;*"Bootloader"*&#x2A; → pick your Pi family → &#x2A;*"USB Boot"**.
+5. Click &#x2A;*"Choose storage"** and select the microSD card.
+6. Click &#x2A;*"NEXT"*&#x2A; → &#x2A;*"YES"** to write the bootloader.
+7. Boot the Pi from this microSD card. When the green LED blinks
+   steadily, disconnect power, remove the microSD, and reboot with
+   the SSD attached.
+
+Your Pi should now boot from the SSD.
+
+<Callout type="info">
+  If USB boot still doesn't work after reflashing, the drive or
+  enclosure is most likely the problem, see
+  [Troubleshooting](../troubleshooting) for known-good chipsets
+  and workarounds.
+</Callout>

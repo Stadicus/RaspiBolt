@@ -1,0 +1,15 @@
+# Odroid setup (/docs/bonus/raspberry-pi/odroid-setup)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/odroid-setup.md)
+  while we port it over.
+</Callout>
+
+If you'd rather run RaspiBolt on different hardware, this guide
+adapts the setup to the [Odroid XU4](https://www.hardkernel.com/)
+and compatible boards like the HC1 and HC2. The main guide's
+software choices still apply, only the OS bring-up and a handful
+of platform-specific tweaks change.

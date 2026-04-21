@@ -1,0 +1,15 @@
+# Balance of Satoshis (/docs/bonus/lightning/balance-of-satoshis)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/lightning/balance-of-satoshis.md)
+  while we port it over.
+</Callout>
+
+[Balance of Satoshis](https://github.com/alexbosworth/balanceofsatoshis)
+(BoS) is a CLI toolkit for LND from Alex Bosworth. Its rebalancing
+command is the headline feature, but BoS bundles dozens of other
+utilities, node monitoring, Telegram bot integration, payment
+routing inspection, that extend what you can do beyond `lncli`.

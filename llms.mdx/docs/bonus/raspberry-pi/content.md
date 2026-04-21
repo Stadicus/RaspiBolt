@@ -1,0 +1,58 @@
+# Raspberry Pi bonus (/docs/bonus/raspberry-pi)
+
+
+
+This section covers the host system rather than the Bitcoin or
+Lightning stack: shell tweaks, dashboards, alternative boot and
+hardware configurations, UPS integration, and hardware-wallet-based
+SSH. None of it is required for a working node, it's what you
+reach for when you're ready to polish the setup.
+
+<Callout type="info" title="Content being migrated">
+  The bonus pages are still being rewritten for v4. Each page links to
+  the v3 source while we work through the backlog.
+</Callout>
+
+## What's in this section [#whats-in-this-section]
+
+<Cards>
+  <Card title="System overview" href="/docs/bonus/raspberry-pi/system-overview">
+    Login dashboard with node and system status.
+  </Card>
+
+  <Card title="Aliases" href="/docs/bonus/raspberry-pi/aliases">
+    Shell shortcuts for common node-management commands.
+  </Card>
+
+  <Card title="Pimp the command line" href="/docs/bonus/raspberry-pi/command-line">
+    Colorful prompt and nicer ls defaults.
+  </Card>
+
+  <Card title="Homer" href="/docs/bonus/raspberry-pi/homer">
+    Browser dashboard with links to all your web services.
+  </Card>
+
+  <Card title="Install Go" href="/docs/bonus/raspberry-pi/go">
+    Install, update, or uninstall the Go toolchain.
+  </Card>
+
+  <Card title="Boot from microSD" href="/docs/bonus/raspberry-pi/boot-from-microsd-card">
+    Boot from microSD and use the external drive for data.
+  </Card>
+
+  <Card title="Upgrade external drive" href="/docs/bonus/raspberry-pi/upgrade-external-drive">
+    Migrate your node data to a larger drive.
+  </Card>
+
+  <Card title="Odroid setup" href="/docs/bonus/raspberry-pi/odroid-setup">
+    Run RaspiBolt on an Odroid XU4 or compatible board.
+  </Card>
+
+  <Card title="Trezor SSH agent" href="/docs/bonus/raspberry-pi/trezor-agent">
+    Use a Trezor as a hardware-backed SSH key.
+  </Card>
+
+  <Card title="UPS with NUT" href="/docs/bonus/raspberry-pi/ups-nut">
+    Graceful shutdown when a connected UPS runs low.
+  </Card>
+</Cards>

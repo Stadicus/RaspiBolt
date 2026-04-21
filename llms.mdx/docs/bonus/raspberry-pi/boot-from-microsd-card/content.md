@@ -1,0 +1,14 @@
+# Boot from microSD card (/docs/bonus/raspberry-pi/boot-from-microsd-card)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/boot-from-microsd-card.md)
+  while we port it over.
+</Callout>
+
+Not every Raspberry Pi can boot directly from an external drive. If
+yours can't, or your USB-SATA enclosure is picky, this guide sets
+up a split configuration: boot the OS from a microSD card, then mount
+the external drive for all the application and blockchain data.

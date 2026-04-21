@@ -1,0 +1,15 @@
+# Remote lncli (/docs/bonus/lightning/remote-lncli)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/lightning/remote-lncli.md)
+  while we port it over.
+</Callout>
+
+This guide shows how to run `lncli` on a different machine on your
+network, typically a Windows or Linux desktop, while LND itself
+keeps running on the RaspiBolt. You get a responsive CLI without
+having to SSH into the node every time you want to inspect or drive
+it.

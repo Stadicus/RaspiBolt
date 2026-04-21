@@ -1,0 +1,15 @@
+# ThunderHub (/docs/bonus/lightning/thunderhub)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/lightning/thunderhub.md)
+  while we port it over.
+</Callout>
+
+[ThunderHub](https://github.com/apotdevin/thunderhub) is an
+open-source LND node manager that runs in your browser. It gives you
+an intuitive UI for the full range of node operations, channels,
+payments, forwards, backups, accessible from any device on your
+network.

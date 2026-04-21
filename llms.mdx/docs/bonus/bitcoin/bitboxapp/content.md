@@ -1,0 +1,15 @@
+# BitBoxApp (/docs/bonus/bitcoin/bitboxapp)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/bitboxapp.md)
+  while we port it over.
+</Callout>
+
+The [BitBoxApp](https://shiftcrypto.ch/app/) is the beginner-friendly
+companion app to the BitBox02 hardware wallet from Shift Crypto. By
+configuring it to connect directly to your RaspiBolt instead of
+Shift's servers, you verify your own transactions and avoid leaking
+wallet addresses to a third party.

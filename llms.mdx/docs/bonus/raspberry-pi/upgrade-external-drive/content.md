@@ -1,0 +1,15 @@
+# Upgrade external drive (/docs/bonus/raspberry-pi/upgrade-external-drive)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/upgrade-external-drive.md)
+  while we port it over.
+</Callout>
+
+The blockchain keeps growing, so the 1 TB drive that felt generous
+three years ago will eventually fill up. This guide walks through
+cloning your node's data onto a larger drive and swapping it in
+without losing channels or state, minimizing downtime for your
+Lightning node along the way.

@@ -1,0 +1,285 @@
+# Troubleshooting (/docs/troubleshooting)
+
+
+
+Things break. Usually it's something small, a typo in a config
+file, a permission that got flipped, a drive enclosure doing
+something funky. This page walks the common layers of a RaspiBolt
+setup so you can find the break systematically rather than
+guess-and-check your way through it.
+
+Where the fix lives elsewhere in the guide, I'll link it. Check the
+output against what's expected, and if something doesn't match,
+jump back to the relevant section.
+
+## Jump to the thing that's on fire [#jump-to-the-thing-thats-on-fire]
+
+<Cards>
+  <Card title="SSH locked out" href="#ssh-lockout-login-via-console">
+    Wrong key, mistyped password, fail2ban banned your LAN. Console fallback.
+  </Card>
+
+  <Card title="USB SSD too slow (hdparm)" href="#usb-ssd-is-too-slow">
+    UAS quirks, usb-storage.quirks in cmdline.txt, ASMedia vs JMicron.
+  </Card>
+
+  <Card title="Firewall rules (ufw)" href="#are-the-right-ports-open-on-the-firewall">
+    Ports 22, 8333, 9735. Subnet mismatch. LAN reachability.
+  </Card>
+
+  <Card title="Users and data dirs" href="#users-and-directories">
+    admin, bitcoin, lnd users. Broken symlinks to /data. Permissions.
+  </Card>
+
+  <Card title="bitcoind won't start" href="#bitcoin-core">
+    Foreground mode, "Cannot obtain lock", "Error opening block database", reindex.
+  </Card>
+
+  <Card title="LND chain sync stuck" href="#lnd">
+    ZMQ, RPC credentials, IBD dependency, "Chain backend fully synced" flag.
+  </Card>
+</Cards>
+
+## Before you start digging [#before-you-start-digging]
+
+Three quick places to look, in this order:
+
+1. **Your own notes.** The most common cause of a broken node is a
+   step that was skipped or done in a different order.
+2. **[Open issues on GitHub](https://github.com/raspibolt/raspibolt/issues).**
+   Someone probably hit it first. If you find the issue, the fix
+   might already be in the comments.
+3. **The [FAQ](/docs/faq).** Answers to the questions that aren't
+   really "bugs", upgrading, restoring backups, Linux basics.
+
+If the answer isn't in any of those, file a new issue and include
+enough detail that someone can reproduce the problem: what you did,
+what you expected, what you saw, and the output of any relevant
+commands.
+
+## Hardware and operating system [#hardware-and-operating-system]
+
+### SSH lockout: login via console [#ssh-lockout-login-via-console]
+
+If SSH refuses to let you in, wrong key, mistyped password,
+fail2ban banned you from your own LAN, plug a display and
+keyboard into the Pi and log in locally. From there, fix the
+sshd config, unban yourself (`sudo fail2ban-client set sshd
+unbanip 192.168.x.x`), or add a new authorised key.
+
+This is why we set a strong password on the `admin` account even
+when we later disable password SSH: the console fallback still
+needs it.
+
+### USB SSD is too slow [#usb-ssd-is-too-slow]
+
+Ran `hdparm` and got abysmal read speeds? Likely cause: the
+kernel is talking to the drive over UAS (USB Attached SCSI), and
+your enclosure's UAS implementation is broken. The fix is to tell
+the kernel to fall back to plain USB mass-storage.
+
+Get the vendor and product IDs for the adapter:
+
+```bash
+lsusb
+```
+
+Find the entry for your enclosure. The interesting bit is the
+`idVendor:idProduct` pair, something like `0bda:9210`.
+
+Open the kernel command line:
+
+```bash
+sudo nano /boot/firmware/cmdline.txt
+```
+
+At the start of the line, add `usb-storage.quirks=VENDOR:PRODUCT:u`
+with your values, keep the single space before whatever follows:
+
+```text
+usb-storage.quirks=0bda:9210:u console=serial0,115200 ...
+```
+
+For multiple drives, comma-separate them:
+
+```text
+usb-storage.quirks=0bda:9210:u,152d:0578:u console=serial0,115200 ...
+```
+
+Reboot and re-test:
+
+```bash
+sudo reboot
+```
+
+```bash
+sudo hdparm -t --direct /dev/sda1
+```
+
+You should see a large jump in read speed. If it's still
+crawling, the enclosure (or its chipset) might just not be a
+great match for the Pi, swap it out. ASMedia ASM1153E-based
+enclosures are the safe bet.
+
+### Are the right ports open on the firewall? [#are-the-right-ports-open-on-the-firewall]
+
+The firewall should allow at least SSH (22), Bitcoin P2P (8333),
+and Lightning P2P (9735). If you're exposing Electrum or LND gRPC
+to your LAN, those too.
+
+Check:
+
+```bash
+sudo ufw status
+```
+
+Expected output (your subnet will differ):
+
+```text
+Status: active
+
+To                         Action      From
+--                         ------      ----
+22                         LIMIT       192.168.0.0/24             # SSH from LAN
+8333                       ALLOW       Anywhere                   # Bitcoin
+9735                       ALLOW       Anywhere                   # Lightning
+50002                      ALLOW       192.168.0.0/24             # Electrum from LAN
+10009                      ALLOW       192.168.0.0/24             # LND gRPC from LAN
+```
+
+If your subnet doesn't match what the rules say (`192.168.0.0/24`
+versus `192.168.1.0/24`, for example), nothing on your LAN can
+reach the node. See [Security](/docs/raspberry-pi/security) for
+the canonical ufw rules.
+
+## Users and directories [#users-and-directories]
+
+### Have the application users been created? [#have-the-application-users-been-created]
+
+```bash
+getent passwd admin bitcoin lnd
+```
+
+Each line should start with the username and list `/home/<user>`
+as the home directory. Missing entries mean that user never got
+created, revisit the relevant section of the guide.
+
+### Are the data symlinks pointing at `/data`? [#are-the-data-symlinks-pointing-at-data]
+
+The whole point of running from an SSD is that application data
+lives on `/data`, not on the root filesystem. Each service user
+has a symlink from `~/.<service>` to its data directory.
+
+```bash
+sudo ls -la /home/bitcoin/.bitcoin /home/lnd/.lnd
+```
+
+You want to see entries like:
+
+```text
+lrwxrwxrwx 1 bitcoin bitcoin 16 ... .bitcoin -> /data/bitcoin
+lrwxrwxrwx 1 lnd     lnd     12 ... .lnd     -> /data/lnd
+```
+
+A red, broken symlink means the target directory doesn't exist,
+create `/data/bitcoin` (or `/data/lnd`) with the right ownership
+and re-link.
+
+The service user also needs write permission in the target
+directory. Verify by touching a file as that user:
+
+```bash
+sudo -u bitcoin touch /data/bitcoin/test && sudo -u bitcoin rm /data/bitcoin/test
+```
+
+No error means the permissions are correct.
+
+## Bitcoin Core [#bitcoin-core]
+
+If something's wrong with `bitcoind`, the quickest way to see what
+is to run it in the foreground, attached to a terminal, where the
+startup output is visible.
+
+Stop the service and start it manually:
+
+```bash
+sudo systemctl stop bitcoind
+sudo -u bitcoin bitcoind -printtoconsole
+```
+
+`bitcoind` will log its entire startup sequence: config file
+parsing, data directory checks, cache sizing, block index load,
+network bootstrap. Most problems reveal themselves here:
+
+* **"Cannot obtain a lock on data directory"**, another
+  `bitcoind` is already running, or a previous one didn't shut
+  down cleanly. Check with `pgrep bitcoind`.
+* **"Error opening block database"**, disk is full, disk is
+  failing, or the indexes are corrupt. If the filesystem is
+  healthy, reindex with `-reindex`.
+* **"Cannot bind to 0.0.0.0:8333"**, port 8333 is already in
+  use, likely by a leftover process. Kill it and retry.
+
+When you're done, `Ctrl-C` to stop, then bring the service back up:
+
+```bash
+sudo systemctl start bitcoind
+```
+
+Tail the debug log if you want to keep watching:
+
+```bash
+sudo -u bitcoin tail -f /data/bitcoin/debug.log
+```
+
+## LND [#lnd]
+
+Same approach: stop the service, run in the foreground, read the
+startup output carefully.
+
+```bash
+sudo systemctl stop lnd
+sudo -u lnd lnd
+```
+
+LND will start, then pause waiting for you to unlock the wallet.
+In a **second SSH session**, unlock it:
+
+```bash
+sudo -u lnd lncli unlock
+```
+
+Back in the first session, LND continues: loads the wallet,
+connects to `bitcoind` via ZMQ, starts rescanning, and eventually
+logs `Chain backend is fully synced`. Any configuration or
+connectivity errors show up in this output.
+
+Common things to check:
+
+* **`lnd.conf`**, the `[Bitcoin]` and `[Bitcoind]` sections must
+  point at the right ZMQ ports and RPC credentials.
+* **RPC credentials**, if you rotated `bitcoind`'s cookie or
+  RPC password without updating `lnd.conf`, LND will fail to
+  connect.
+* **Chain sync**, LND won't start routing until `bitcoind` is
+  fully synced. A stuck IBD will look like a stuck LND.
+
+`Ctrl-C` to stop, then:
+
+```bash
+sudo systemctl start lnd
+```
+
+LND's log lives in `/data/lnd/logs/bitcoin/mainnet/lnd.log`, tail
+it the same way:
+
+```bash
+sudo -u lnd tail -f /data/lnd/logs/bitcoin/mainnet/lnd.log
+```
+
+## When you need more help [#when-you-need-more-help]
+
+This troubleshooting guide gets extended whenever a pattern shows
+up enough times to be worth documenting. If you've worked through a
+gnarly problem that isn't here, an issue or pull request is the way
+to add it, future-you (and everyone else) will thank you.
