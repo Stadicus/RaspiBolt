@@ -68,6 +68,8 @@ buying a [Blockaccino](https://vimeo.com/252693058). I used the
 [Eclair](https://github.com/ACINQ/eclair) Lightning implementation
 on testnet, because mainnet wasn't running yet. Oh, how time flies.
 
+<Screenshot src="/images/backstory_blockaccino.png" alt="Paying for a coffee with Lightning in 2017 - the original Blockaccino" caption="The original goal: pay for a coffee over Lightning. Mainnet wasn't even live yet." />
+
 ## A community project [#a-community-project]
 
 Thanks to every contributor who has filed an issue, opened a pull
