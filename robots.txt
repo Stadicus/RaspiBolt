@@ -1,4 +1,3 @@
 User-Agent: *
-Allow: /
+Disallow: /
 
-Sitemap: https://stadicus.github.io/RaspiBolt/sitemap.xml
