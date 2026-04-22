@@ -132,8 +132,12 @@ sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-30.2/bin/*
 bitcoin-cli --version
 ```
 
-The version string should start with `Bitcoin Core RPC client version
-v30.2`.
+Expected output:
+
+```text
+Bitcoin Core RPC client version v30.2.0
+Copyright (C) 2009-2026 The Bitcoin Core developers
+```
 
 ## Generate RPC credentials [#generate-rpc-credentials]
 

@@ -41,8 +41,13 @@ Debian backports.
    npm --version
    ```
 
-   Expected output, a `v22.x` line from `node`, and an `11.x` or
-   newer line from `npm`.
+   Expected output, a `v22.x` line from `node`, and a `10.x` or
+   newer line from `npm`:
+
+   ```text
+   v22.22.2
+   10.9.7
+   ```
 
 <Callout type="info" title="If you already installed Node for the Bitcoin Explorer">
   BTC RPC Explorer uses the same NodeSource setup. If Node 22 is

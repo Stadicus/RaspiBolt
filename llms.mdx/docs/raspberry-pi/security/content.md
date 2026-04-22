@@ -252,7 +252,7 @@ radios you aren't using removes another slice of attack surface.
 
 1. Edit the firmware configuration:
 
-   ```bash
+   ```bash test:skip
    sudo nano /boot/firmware/config.txt
    ```
 

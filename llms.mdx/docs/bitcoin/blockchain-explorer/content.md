@@ -39,7 +39,7 @@ Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
 1. Add NodeSource and install:
 
    ```bash
-   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash,
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
    sudo apt install nodejs
    ```
 
@@ -48,6 +48,14 @@ Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
    ```bash
    node --version
    npm --version
+   ```
+
+   Expected output, a `v22.x` line from `node`, and a `10.x` or newer
+   line from `npm`:
+
+   ```text
+   v22.22.2
+   10.9.7
    ```
 
 ## Create the service user [#create-the-service-user]

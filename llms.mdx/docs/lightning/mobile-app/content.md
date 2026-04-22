@@ -79,10 +79,12 @@ containing the onion URL, the port, and the admin macaroon as hex.
 You'll paste that JSON into a QR code on the Pi, maximise the
 terminal window, and scan it with the phone.
 
-1. Install `qrencode`:
+1. Install `qrencode` for the QR render, and `xxd` for the macaroon
+   hex/base64 conversion below. On Debian 13, `xxd` is its own
+   package and isn't pulled in by default:
 
    ```bash
-   sudo apt install -y qrencode jq
+   sudo apt install -y qrencode jq xxd
    ```
 
 2. Grab the admin macaroon as uppercase hex:

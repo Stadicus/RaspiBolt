@@ -12,7 +12,17 @@ ecosystem advantage, and that matters when you're starting out.
 
 This page takes you from zero to a running `lnd` service with a
 24-word seed, an auto-unlocking wallet, and a healthy `getinfo`
-response. Budget about 30 minutes of hands-on time.
+response.
+
+<Callout type="warn" title="Real money from satoshi one">
+  Lightning isn't a testbed. The wallet you create here holds real
+  bitcoin, and every channel open or close is an on-chain transaction
+  that costs real fees. Until you have your 24-word seed **written
+  down on paper** and your `channel.backup` file syncing off-Pi
+  (next page after this one), don't fund the wallet. A lost seed or
+  missing SCB on a dead SSD means the funds are gone, no support desk.
+  Budget about **30 minutes** of hands-on time for this page.
+</Callout>
 
 ## Create the system user and data directory [#create-the-system-user-and-data-directory]
 
@@ -125,10 +135,17 @@ LND releases are signed by Olaoluwa "Roasbeef" Osuntokun.
 
 ## Install the binaries [#install-the-binaries]
 
-1. Extract the archive and install both binaries into
-   `/usr/local/bin` with root ownership:
+1. Step back out of the `lnd` shell first, installing binaries into
+   `/usr/local/bin` needs `admin`'s `sudo`:
 
    ```bash
+   exit
+   ```
+
+2. Extract the archive and install both binaries:
+
+   ```bash
+   cd /tmp
    tar -xvf lnd-linux-arm64-v0.20.1-beta.tar.gz
    sudo install -m 0755 -o root -g root -t /usr/local/bin lnd-linux-arm64-v0.20.1-beta/*
    lnd --version
@@ -155,10 +172,11 @@ every startup. You have two options:
 
 This guide picks auto-unlock. You can switch later.
 
-1. Still as user `lnd`, create the password file and enter
+1. Become `lnd` again and create the password file, then enter
    password `[C]` (one you haven't used anywhere else):
 
    ```bash
+   sudo su - lnd
    nano /data/lnd/password.txt
    ```
 
@@ -326,7 +344,7 @@ second session.
 
 1. Still as `admin`, start LND in the foreground:
 
-   ```bash
+   ```bash test:skip
    sudo su - lnd
    lnd
    ```
@@ -338,7 +356,7 @@ second session.
 2. Open a **second** SSH session to the Pi. Become the `lnd` user
    and run `lncli create`:
 
-   ```bash
+   ```bash test:skip
    sudo su - lnd
    lncli create
    ```
@@ -387,7 +405,7 @@ Back in the first window where `lnd` is still running, stop it with
 `Ctrl-C`. Then start it again in the foreground to confirm the
 auto-unlock works:
 
-```bash
+```bash test:skip
 lnd
 ```
 
@@ -415,7 +433,7 @@ exit
    already in the `lnd` group; the remaining permissions tweak is
    a symlink and a group-read bit on the macaroon:
 
-   ```bash
+   ```bash test:skip
    ln -s /data/lnd /home/admin/.lnd
    sudo chmod -R g+X /data/lnd/data/
    sudo chmod g+r /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon
@@ -424,7 +442,7 @@ exit
 3. Log out of the SSH session and log back in, group membership
    only takes effect on a fresh shell. Then smoke-test:
 
-   ```bash
+   ```bash test:skip
    lncli getinfo
    lncli getnetworkinfo
    ```
@@ -444,13 +462,13 @@ working Lightning node.
 1. Generate a native-SegWit address and send a small amount of
    on-chain sats to it from another wallet:
 
-   ```bash
+   ```bash test:skip
    lncli newaddress p2wkh
    ```
 
    Wait for one confirmation, then:
 
-   ```bash
+   ```bash test:skip
    lncli walletbalance
    ```
 
@@ -461,14 +479,14 @@ working Lightning node.
    (capacity in sats, explicit fee in sats/vByte from
    [mempool.space](https://mempool.space)):
 
-   ```bash
+   ```bash test:skip
    lncli connect 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f@34.239.230.56:9735
    lncli openchannel --sat_per_vbyte 8 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f 200000 0
    ```
 
    Three confirmations later the channel is active:
 
-   ```bash
+   ```bash test:skip
    lncli listchannels
    ```
 
@@ -491,7 +509,7 @@ silently, you don't have to trust them.
 You already enabled `wtclient.active=true` in `lnd.conf`. Add a
 tower or two:
 
-```bash
+```bash test:skip
 sudo su - lnd
 lncli wtclient add 023bad37e5795654cecc69b43599da8bd5789ac633c098253f60494bde602b60bf@iiu4epqzm6cydqhezueenccjlyzrqeruntlzbx47mlmdgfwgtrll66qd.onion:9911
 lncli wtclient towers
@@ -505,7 +523,7 @@ add two or three more for redundancy.
 
 A small reference you'll come back to:
 
-```bash
+```bash test:skip
 # node info and peers
 lncli getinfo
 lncli listpeers

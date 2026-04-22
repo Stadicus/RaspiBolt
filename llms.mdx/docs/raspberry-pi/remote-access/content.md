@@ -23,7 +23,7 @@ Open a terminal on your regular computer:
 
 Try to reach the Pi by its hostname. Press `Ctrl`-`C` to stop:
 
-```bash
+```bash test:skip
 ping raspibolt.local
 ```
 
@@ -43,7 +43,7 @@ says `raspibolt.local`.
 SSH is built into every current macOS, Linux, and Windows, no extra
 client to install. Connect with:
 
-```bash
+```bash test:skip
 ssh admin@raspibolt.local
 ```
 
@@ -104,7 +104,7 @@ every current SSH client and server.
 
 On your **regular computer** (not the Pi), run:
 
-```bash
+```bash test:skip
 ssh-keygen -t ed25519 -C "raspibolt"
 ```
 
@@ -131,7 +131,7 @@ Two new files appear in `~/.ssh/` (on Windows:
 
 On **macOS or Linux**, one command does it:
 
-```bash
+```bash test:skip
 ssh-copy-id admin@raspibolt.local
 ```
 
@@ -151,7 +151,7 @@ type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh admin@raspibolt.local "mkdir -p 
 
 Open a fresh terminal and connect again:
 
-```bash
+```bash test:skip
 ssh admin@raspibolt.local
 ```
 

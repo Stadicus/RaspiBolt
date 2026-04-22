@@ -24,6 +24,17 @@ the query never leaves the Pi.
 * Put it behind **stunnel** for TLS on the LAN.
 * Wire it up as a systemd service so it starts on boot and stays up.
 
+<Callout type="info" title="Expect a long initial index">
+  Hands-on setup is about 30 minutes. The slow part comes after: once
+  `electrs` starts, it reads the whole chain from `bitcoind` and builds
+  its own address index. On a Pi 5 with NVMe that's roughly **8 to 12
+  hours**; on a Pi 4 with USB SSD it can stretch past a day. The Pi
+  will feel sluggish while it runs, disk I/O is the bottleneck.
+  Nothing to babysit, check back the next day. Make sure Bitcoin Core
+  is fully synced (`verificationprogress` at 1.0) before you start,
+  otherwise `electrs` will happily index a moving target and thrash.
+</Callout>
+
 <Callout type="info" title="stunnel for raw TCP, Caddy for HTTP">
   Earlier versions of this guide used NGINX's stream module to wrap
   Electrum's plain-TCP protocol in TLS. In v4, HTTP services get
@@ -38,7 +49,7 @@ Electrs is written in Rust and links against `clang` and `cmake` for
 its native dependencies (mostly RocksDB). Install them once:
 
 ```bash
-sudo apt install cargo clang cmake build-essential
+sudo apt install cargo clang cmake build-essential libclang-dev pkg-config
 ```
 
 Using Debian's packaged `cargo` avoids the extra step of installing
@@ -61,17 +72,33 @@ released.
    cd electrs
    ```
 
-2. Import Roman's signing key and verify the release tag:
+2. Verify the release tag. Starting with v0.11.1 Roman signs tags
+   with SSH instead of PGP; he publishes the signing key in a
+   [dedicated repo](https://github.com/romanz/keys) whose `README.md`
+   is itself PGP-signed by his old GPG key, binding the transition.
+
+   Register his SSH signing key as a trusted signer for `git` and
+   point git's SSH-signature verification at that file:
 
    ```bash
-   curl https://romanzey.de/pgp.txt | gpg --import
+   mkdir -p ~/.config/git
+   echo 'git@romanzey.de ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAZVq/3fgkildjN/MqEnhrP5550sDpFzGxMwevr5q/9w' \
+     > ~/.config/git/allowed_signers
+   git config --global gpg.format ssh
+   git config --global gpg.ssh.allowedSignersFile ~/.config/git/allowed_signers
    git verify-tag v0.11.1
    ```
 
-   Expected output ends with a `Good signature` line and the key
-   fingerprint `15C8 C357 4AE4 F1E2 5F3F 35C5 87CA E5FA 4691 7CBB`.
-   Compare it against what you see in the terminal, a fingerprint
-   match is the whole point.
+   Expected output:
+
+   ```text
+   Good "git" signature for git@romanzey.de with ED25519 key SHA256:GifMn7F2swVKyn6MewbQHrYCs4i/bPK7gnwxhuPz/YA
+   ```
+
+   The fingerprint `SHA256:GifMn7F2swVKyn6MewbQHrYCs4i/bPK7gnwxhuPz/YA`
+   is what matters; compare it against what you see in your terminal
+   and against the key published in Roman's
+   [keys repo](https://github.com/romanz/keys).
 
 3. Build it. On a Pi 5 this takes somewhere between 30 minutes and
    an hour; the Pi will work hard, and that's fine:
@@ -85,6 +112,12 @@ released.
    ```bash
    sudo install -m 0755 -o root -g root -t /usr/local/bin ./target/release/electrs
    electrs --version
+   ```
+
+   Expected output:
+
+   ```text
+   v0.11.1
    ```
 
 ## Service user and data directory [#service-user-and-data-directory]

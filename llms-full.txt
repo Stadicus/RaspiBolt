@@ -790,8 +790,12 @@ sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-30.2/bin/*
 bitcoin-cli --version
 ```
 
-The version string should start with `Bitcoin Core RPC client version
-v30.2`.
+Expected output:
+
+```text
+Bitcoin Core RPC client version v30.2.0
+Copyright (C) 2009-2026 The Bitcoin Core developers
+```
 
 ## Generate RPC credentials [#generate-rpc-credentials]
 
@@ -1125,7 +1129,7 @@ Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
 1. Add NodeSource and install:
 
    ```bash
-   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash,
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
    sudo apt install nodejs
    ```
 
@@ -1134,6 +1138,14 @@ Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
    ```bash
    node --version
    npm --version
+   ```
+
+   Expected output, a `v22.x` line from `node`, and a `10.x` or newer
+   line from `npm`:
+
+   ```text
+   v22.22.2
+   10.9.7
    ```
 
 ## Create the service user [#create-the-service-user]
@@ -1673,6 +1685,17 @@ the query never leaves the Pi.
 * Put it behind **stunnel** for TLS on the LAN.
 * Wire it up as a systemd service so it starts on boot and stays up.
 
+<Callout type="info" title="Expect a long initial index">
+  Hands-on setup is about 30 minutes. The slow part comes after: once
+  `electrs` starts, it reads the whole chain from `bitcoind` and builds
+  its own address index. On a Pi 5 with NVMe that's roughly **8 to 12
+  hours**; on a Pi 4 with USB SSD it can stretch past a day. The Pi
+  will feel sluggish while it runs, disk I/O is the bottleneck.
+  Nothing to babysit, check back the next day. Make sure Bitcoin Core
+  is fully synced (`verificationprogress` at 1.0) before you start,
+  otherwise `electrs` will happily index a moving target and thrash.
+</Callout>
+
 <Callout type="info" title="stunnel for raw TCP, Caddy for HTTP">
   Earlier versions of this guide used NGINX's stream module to wrap
   Electrum's plain-TCP protocol in TLS. In v4, HTTP services get
@@ -1687,7 +1710,7 @@ Electrs is written in Rust and links against `clang` and `cmake` for
 its native dependencies (mostly RocksDB). Install them once:
 
 ```bash
-sudo apt install cargo clang cmake build-essential
+sudo apt install cargo clang cmake build-essential libclang-dev pkg-config
 ```
 
 Using Debian's packaged `cargo` avoids the extra step of installing
@@ -1710,17 +1733,33 @@ released.
    cd electrs
    ```
 
-2. Import Roman's signing key and verify the release tag:
+2. Verify the release tag. Starting with v0.11.1 Roman signs tags
+   with SSH instead of PGP; he publishes the signing key in a
+   [dedicated repo](https://github.com/romanz/keys) whose `README.md`
+   is itself PGP-signed by his old GPG key, binding the transition.
+
+   Register his SSH signing key as a trusted signer for `git` and
+   point git's SSH-signature verification at that file:
 
    ```bash
-   curl https://romanzey.de/pgp.txt | gpg --import
+   mkdir -p ~/.config/git
+   echo 'git@romanzey.de ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAZVq/3fgkildjN/MqEnhrP5550sDpFzGxMwevr5q/9w' \
+     > ~/.config/git/allowed_signers
+   git config --global gpg.format ssh
+   git config --global gpg.ssh.allowedSignersFile ~/.config/git/allowed_signers
    git verify-tag v0.11.1
    ```
 
-   Expected output ends with a `Good signature` line and the key
-   fingerprint `15C8 C357 4AE4 F1E2 5F3F 35C5 87CA E5FA 4691 7CBB`.
-   Compare it against what you see in the terminal, a fingerprint
-   match is the whole point.
+   Expected output:
+
+   ```text
+   Good "git" signature for git@romanzey.de with ED25519 key SHA256:GifMn7F2swVKyn6MewbQHrYCs4i/bPK7gnwxhuPz/YA
+   ```
+
+   The fingerprint `SHA256:GifMn7F2swVKyn6MewbQHrYCs4i/bPK7gnwxhuPz/YA`
+   is what matters; compare it against what you see in your terminal
+   and against the key published in Roman's
+   [keys repo](https://github.com/romanz/keys).
 
 3. Build it. On a Pi 5 this takes somewhere between 30 minutes and
    an hour; the Pi will work hard, and that's fine:
@@ -1734,6 +1773,12 @@ released.
    ```bash
    sudo install -m 0755 -o root -g root -t /usr/local/bin ./target/release/electrs
    electrs --version
+   ```
+
+   Expected output:
+
+   ```text
+   v0.11.1
    ```
 
 ## Service user and data directory [#service-user-and-data-directory]
@@ -2179,7 +2224,7 @@ that can read `channel.backup`. So the SSH key lives in
 2. Copy the public key into the remote host's
    `authorized_keys`. On the **remote host**, run:
 
-   ```bash
+   ```bash test:skip
    mkdir -p ~/.ssh
    chmod 700 ~/.ssh
    echo "ssh-ed25519 AAAA...your-pubkey-here... lnd@raspibolt" >> ~/.ssh/authorized_keys
@@ -2190,7 +2235,7 @@ that can read `channel.backup`. So the SSH key lives in
 3. Back on the **Pi** as `lnd`, do the first connection by hand
    so the remote host's fingerprint lands in `known_hosts`:
 
-   ```bash
+   ```bash test:skip
    ssh -i /home/lnd/.ssh/scb-backup backup@10.0.0.50 "echo ok"
    ```
 
@@ -2317,7 +2362,7 @@ activates a matching **service unit**. The two go together.
    change. `touch` updates the mtime, which is enough to fire
    `PathChanged`:
 
-   ```bash
+   ```bash test:skip
    sudo -u lnd touch /data/lnd/data/chain/bitcoin/mainnet/channel.backup
    ```
 
@@ -2328,7 +2373,7 @@ activates a matching **service unit**. The two go together.
 4. On the remote host, list the target directory. You should see
    the timestamped file plus `channel.backup.latest`:
 
-   ```bash
+   ```bash test:skip
    ls -la ~/raspibolt-scb/
    ```
 
@@ -2356,13 +2401,13 @@ level is: fresh Pi, same 24-word seed, latest SCB, pray.
 2. Pull `channel.backup.latest` from your remote host onto the
    new Pi:
 
-   ```bash
+   ```bash test:skip
    sudo -u lnd scp backup@10.0.0.50:/home/backup/raspibolt-scb/channel.backup.latest /tmp/channel.backup
    ```
 
 3. Start LND in the foreground as the `lnd` user:
 
-   ```bash
+   ```bash test:skip
    sudo su - lnd
    lnd
    ```
@@ -2373,7 +2418,7 @@ level is: fresh Pi, same 24-word seed, latest SCB, pray.
    10000 is plenty for a home node. The `--multi_file` flag
    tells `lncli create` to also accept an SCB:
 
-   ```bash
+   ```bash test:skip
    sudo su - lnd
    lncli create
    ```
@@ -2418,7 +2463,7 @@ close settles at the latest state with both peers agreeing,
 doesn't trigger commit-delay timeouts, and pays lower on-chain
 fees. Planning to retire the Pi or move to new hardware?
 
-```bash
+```bash test:skip
 lncli listchannels
 lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
 ```
@@ -2524,7 +2569,17 @@ ecosystem advantage, and that matters when you're starting out.
 
 This page takes you from zero to a running `lnd` service with a
 24-word seed, an auto-unlocking wallet, and a healthy `getinfo`
-response. Budget about 30 minutes of hands-on time.
+response.
+
+<Callout type="warn" title="Real money from satoshi one">
+  Lightning isn't a testbed. The wallet you create here holds real
+  bitcoin, and every channel open or close is an on-chain transaction
+  that costs real fees. Until you have your 24-word seed **written
+  down on paper** and your `channel.backup` file syncing off-Pi
+  (next page after this one), don't fund the wallet. A lost seed or
+  missing SCB on a dead SSD means the funds are gone, no support desk.
+  Budget about **30 minutes** of hands-on time for this page.
+</Callout>
 
 ## Create the system user and data directory [#create-the-system-user-and-data-directory]
 
@@ -2637,10 +2692,17 @@ LND releases are signed by Olaoluwa "Roasbeef" Osuntokun.
 
 ## Install the binaries [#install-the-binaries]
 
-1. Extract the archive and install both binaries into
-   `/usr/local/bin` with root ownership:
+1. Step back out of the `lnd` shell first, installing binaries into
+   `/usr/local/bin` needs `admin`'s `sudo`:
 
    ```bash
+   exit
+   ```
+
+2. Extract the archive and install both binaries:
+
+   ```bash
+   cd /tmp
    tar -xvf lnd-linux-arm64-v0.20.1-beta.tar.gz
    sudo install -m 0755 -o root -g root -t /usr/local/bin lnd-linux-arm64-v0.20.1-beta/*
    lnd --version
@@ -2667,10 +2729,11 @@ every startup. You have two options:
 
 This guide picks auto-unlock. You can switch later.
 
-1. Still as user `lnd`, create the password file and enter
+1. Become `lnd` again and create the password file, then enter
    password `[C]` (one you haven't used anywhere else):
 
    ```bash
+   sudo su - lnd
    nano /data/lnd/password.txt
    ```
 
@@ -2838,7 +2901,7 @@ second session.
 
 1. Still as `admin`, start LND in the foreground:
 
-   ```bash
+   ```bash test:skip
    sudo su - lnd
    lnd
    ```
@@ -2850,7 +2913,7 @@ second session.
 2. Open a **second** SSH session to the Pi. Become the `lnd` user
    and run `lncli create`:
 
-   ```bash
+   ```bash test:skip
    sudo su - lnd
    lncli create
    ```
@@ -2899,7 +2962,7 @@ Back in the first window where `lnd` is still running, stop it with
 `Ctrl-C`. Then start it again in the foreground to confirm the
 auto-unlock works:
 
-```bash
+```bash test:skip
 lnd
 ```
 
@@ -2927,7 +2990,7 @@ exit
    already in the `lnd` group; the remaining permissions tweak is
    a symlink and a group-read bit on the macaroon:
 
-   ```bash
+   ```bash test:skip
    ln -s /data/lnd /home/admin/.lnd
    sudo chmod -R g+X /data/lnd/data/
    sudo chmod g+r /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon
@@ -2936,7 +2999,7 @@ exit
 3. Log out of the SSH session and log back in, group membership
    only takes effect on a fresh shell. Then smoke-test:
 
-   ```bash
+   ```bash test:skip
    lncli getinfo
    lncli getnetworkinfo
    ```
@@ -2956,13 +3019,13 @@ working Lightning node.
 1. Generate a native-SegWit address and send a small amount of
    on-chain sats to it from another wallet:
 
-   ```bash
+   ```bash test:skip
    lncli newaddress p2wkh
    ```
 
    Wait for one confirmation, then:
 
-   ```bash
+   ```bash test:skip
    lncli walletbalance
    ```
 
@@ -2973,14 +3036,14 @@ working Lightning node.
    (capacity in sats, explicit fee in sats/vByte from
    [mempool.space](https://mempool.space)):
 
-   ```bash
+   ```bash test:skip
    lncli connect 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f@34.239.230.56:9735
    lncli openchannel --sat_per_vbyte 8 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f 200000 0
    ```
 
    Three confirmations later the channel is active:
 
-   ```bash
+   ```bash test:skip
    lncli listchannels
    ```
 
@@ -3003,7 +3066,7 @@ silently, you don't have to trust them.
 You already enabled `wtclient.active=true` in `lnd.conf`. Add a
 tower or two:
 
-```bash
+```bash test:skip
 sudo su - lnd
 lncli wtclient add 023bad37e5795654cecc69b43599da8bd5789ac633c098253f60494bde602b60bf@iiu4epqzm6cydqhezueenccjlyzrqeruntlzbx47mlmdgfwgtrll66qd.onion:9911
 lncli wtclient towers
@@ -3017,7 +3080,7 @@ add two or three more for redundancy.
 
 A small reference you'll come back to:
 
-```bash
+```bash test:skip
 # node info and peers
 lncli getinfo
 lncli listpeers
@@ -3142,10 +3205,12 @@ containing the onion URL, the port, and the admin macaroon as hex.
 You'll paste that JSON into a QR code on the Pi, maximise the
 terminal window, and scan it with the phone.
 
-1. Install `qrencode`:
+1. Install `qrencode` for the QR render, and `xxd` for the macaroon
+   hex/base64 conversion below. On Debian 13, `xxd` is its own
+   package and isn't pulled in by default:
 
    ```bash
-   sudo apt install -y qrencode jq
+   sudo apt install -y qrencode jq xxd
    ```
 
 2. Grab the admin macaroon as uppercase hex:
@@ -3319,8 +3384,13 @@ Debian backports.
    npm --version
    ```
 
-   Expected output, a `v22.x` line from `node`, and an `11.x` or
-   newer line from `npm`.
+   Expected output, a `v22.x` line from `node`, and a `10.x` or
+   newer line from `npm`:
+
+   ```text
+   v22.22.2
+   10.9.7
+   ```
 
 <Callout type="info" title="If you already installed Node for the Bitcoin Explorer">
   BTC RPC Explorer uses the same NodeSource setup. If Node 22 is
@@ -4111,13 +4181,13 @@ Bring the Pi onto your tailnet. This prints a one-time URL,
 open it on any device, log in (a personal Tailscale account is
 free for up to 100 devices), and authorise the Pi:
 
-```bash
+```bash test:skip
 sudo tailscale up
 ```
 
 Confirm it's connected and read its tailnet IP:
 
-```bash
+```bash test:skip
 tailscale status
 tailscale ip -4
 ```
@@ -4146,7 +4216,7 @@ Install Tailscale on whatever device you want to SSH **from**:
 Log in with the same account. Once both devices are on the tailnet,
 SSH to the Pi's tailnet IP (or MagicDNS name if you enabled it):
 
-```bash
+```bash test:skip
 ssh admin@100.x.y.z
 ```
 
@@ -4192,7 +4262,7 @@ Open a terminal on your regular computer:
 
 Try to reach the Pi by its hostname. Press `Ctrl`-`C` to stop:
 
-```bash
+```bash test:skip
 ping raspibolt.local
 ```
 
@@ -4212,7 +4282,7 @@ says `raspibolt.local`.
 SSH is built into every current macOS, Linux, and Windows, no extra
 client to install. Connect with:
 
-```bash
+```bash test:skip
 ssh admin@raspibolt.local
 ```
 
@@ -4273,7 +4343,7 @@ every current SSH client and server.
 
 On your **regular computer** (not the Pi), run:
 
-```bash
+```bash test:skip
 ssh-keygen -t ed25519 -C "raspibolt"
 ```
 
@@ -4300,7 +4370,7 @@ Two new files appear in `~/.ssh/` (on Windows:
 
 On **macOS or Linux**, one command does it:
 
-```bash
+```bash test:skip
 ssh-copy-id admin@raspibolt.local
 ```
 
@@ -4320,7 +4390,7 @@ type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh admin@raspibolt.local "mkdir -p 
 
 Open a fresh terminal and connect again:
 
-```bash
+```bash test:skip
 ssh admin@raspibolt.local
 ```
 
@@ -4586,7 +4656,7 @@ radios you aren't using removes another slice of attack surface.
 
 1. Edit the firmware configuration:
 
-   ```bash
+   ```bash test:skip
    sudo nano /boot/firmware/config.txt
    ```
 
