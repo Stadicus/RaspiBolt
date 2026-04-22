@@ -1,5 +1,7 @@
 :HL["/RaspiBolt/_next/static/chunks/11c0g.w~bn2w7.css","style"]
-:HL["/RaspiBolt/_next/static/chunks/02wav_va_q0.s.css","style"]
+:HL["/RaspiBolt/_next/static/chunks/0ux2fn7rvljc4.css","style"]
 :HL["/RaspiBolt/_next/static/media/797e433ab948586e-s.p.0.q-h669a_dqa.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
 :HL["/RaspiBolt/_next/static/media/caa3a2e1cccd8315-s.p.16t1db8_9y2o~.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"docs","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"lightning","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"xVMhX1uWgvbYM-K_Bgj9-"}
+:HL["/RaspiBolt/images/logo-light.png","image"]
+:HL["/RaspiBolt/images/logo-dark.png","image"]
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"docs","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"lightning","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"79TAK_mP19B7X2SLWvmqd"}
