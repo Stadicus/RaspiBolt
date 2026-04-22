@@ -15,6 +15,8 @@ unprivileged user, point it at LND's macaroon and TLS certificate,
 and expose it behind Caddy at `https://rtl.raspibolt.local` on your
 LAN.
 
+<Screenshot src="/images/lightning_rtl.png" alt="Ride The Lightning dashboard showing channel list, balances, and routing stats" caption="Ride The Lightning: channels, on-chain, routing, fees, all in one dashboard" />
+
 ## Install Node.js 22 [#install-nodejs-22]
 
 RTL is a Node.js application and needs a recent LTS runtime. The

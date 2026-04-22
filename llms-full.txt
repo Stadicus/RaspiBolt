@@ -1112,6 +1112,8 @@ Bitcoin Core over RPC and to Electrs for address balance queries,
 gives you a clean browser interface for blocks, transactions,
 mempool, and fee estimates, and never phones home.
 
+<Screenshot src="/images/bitcoin_btcrpcexplorer.png" alt="BTC RPC Explorer homepage showing the latest block, mempool summary, and fee estimates" caption="BTC RPC Explorer homepage, reading from your own Bitcoin Core + Electrs" />
+
 ## What you'll do [#what-youll-do]
 
 * Install Node.js 22 LTS from NodeSource.
@@ -1475,6 +1477,8 @@ Raw. Active development, transparent about what it's doing under the
 hood, first-class support for every common hardware wallet, excellent
 coin control, PSBTs, and batching. Sparrow is the right default for
 most people using a RaspiBolt.
+
+<Screenshot src="/images/bitcoin_sparrow.png" alt="Sparrow Wallet main screen showing transactions, balance, and connected Electrs server" caption="Sparrow Wallet connected to a private Electrs server" />
 
 ## Not Sparrow? [#not-sparrow]
 
@@ -2141,6 +2145,1542 @@ These guides are optional: the main path works without any of them.
     System overviews, aliases, UPS integration, alternative hardware, and hardware-wallet SSH.
   </Card>
 </Cards>
+
+
+# Channel backup (/docs/lightning/channel-backup)
+
+
+
+The 24-word seed restores your on-chain wallet. It does **not**
+restore your Lightning channels. For that you need the **Static
+Channel Backup**, a small file LND updates every time a channel
+state changes, and the missing half of a complete recovery plan.
+
+This page explains what the SCB can and can't do, walks you
+through an automated offsite sync, and covers the restore flow.
+
+## What the SCB actually does [#what-the-scb-actually-does]
+
+The Static Channel Backup (SCB) is a single file:
+`/data/lnd/data/chain/bitcoin/mainnet/channel.backup`. LND rewrites
+it every time a channel opens, closes, or changes state. It
+contains enough information, each peer's pubkey, the channel
+funding outpoint, the commit transaction, for a **new** LND
+instance to know who to ask for funds back.
+
+It does **not** re-open your channels. It does **not** give you
+access to off-chain liquidity on a fresh node. What it does, on
+restore, is send a request to every channel peer asking them to
+force-close the channel at the latest state they know about. Your
+funds then land in your on-chain wallet after the usual
+commit-timeout.
+
+The consequences matter:
+
+* **Recovery depends on your peers being online and honest.** An
+  offline peer means locked funds until they come back. A
+  malicious peer could, in principle, refuse.
+* **Your SCB must be current.** If the peer closes at a state
+  newer than the one in your SCB, LND sees a state it doesn't
+  recognise and refuses to claim. You'll still get a force-close
+  from the peer, just the slow path, not the SCB-accelerated one.
+* **Never use the SCB on a node that is still running the same
+  channels elsewhere.** Restoring triggers force-closes; doing
+  that against a node that thinks the channels are fine gets your
+  balances punished to the peer. Treat the SCB like a one-shot
+  recovery tool.
+
+<Callout type="warn" title="The SCB is only useful if it's offsite">
+  A channel backup that lives on the same SSD as LND is no backup
+  at all, the scenario it's meant to survive is the SSD dying. The
+  whole point of this page is to get a copy of `channel.backup` onto
+  a machine that isn't the Pi.
+</Callout>
+
+## Strategy [#strategy]
+
+This guide sets up one thing: a **systemd path unit** that watches
+`channel.backup&#x60; for changes and an **`scp` script** that ships
+the file to a remote host on every update. No polling, no cron,
+no extra long-running process, systemd notices the file change,
+fires the service, the service copies the file, and goes away.
+
+You need:
+
+* A **remote host** you trust, another machine on your LAN, a
+  VPS you own, an always-on box at a friend's place, or a cheap
+  home NAS. Anywhere `ssh` can reach.
+* An **SSH key** on the Pi that you've added to
+  `~/.ssh/authorized_keys` on the remote host.
+
+The rest of this page assumes the remote host is at
+`backup@10.0.0.50` with the SCB going into
+`/home/backup/raspibolt-scb/`. Substitute your own host, user,
+and path.
+
+## Set up the SSH key for lnd [#set-up-the-ssh-key-for-lnd]
+
+The sync has to run as the `lnd` user, that's the only account
+that can read `channel.backup`. So the SSH key lives in
+`/home/lnd/.ssh/`.
+
+1. As `admin`, become `lnd` and generate a key (no passphrase,
+   a passphrase would defeat unattended sync):
+
+   ```bash
+   sudo su - lnd
+   ssh-keygen -t ed25519 -f /home/lnd/.ssh/scb-backup -N ""
+   cat /home/lnd/.ssh/scb-backup.pub
+   ```
+
+2. Copy the public key into the remote host's
+   `authorized_keys`. On the **remote host**, run:
+
+   ```bash test:skip
+   mkdir -p ~/.ssh
+   chmod 700 ~/.ssh
+   echo "ssh-ed25519 AAAA...your-pubkey-here... lnd@raspibolt" >> ~/.ssh/authorized_keys
+   chmod 600 ~/.ssh/authorized_keys
+   mkdir -p ~/raspibolt-scb
+   ```
+
+3. Back on the **Pi** as `lnd`, do the first connection by hand
+   so the remote host's fingerprint lands in `known_hosts`:
+
+   ```bash test:skip
+   ssh -i /home/lnd/.ssh/scb-backup backup@10.0.0.50 "echo ok"
+   ```
+
+   Accept the fingerprint. You should see `ok`. Exit the `lnd`
+   session:
+
+   ```bash
+   exit
+   ```
+
+## Write the sync script [#write-the-sync-script]
+
+1. As `admin`, create the script:
+
+   ```bash
+   sudo nano /usr/local/bin/scb-sync
+   ```
+
+2. Paste:
+
+   ```bash
+   #!/bin/bash
+   # RaspiBolt: push channel.backup to an offsite host on change
+   # /usr/local/bin/scb-sync
+
+   set -euo pipefail
+
+   SRC="/data/lnd/data/chain/bitcoin/mainnet/channel.backup"
+   REMOTE_USER="backup"
+   REMOTE_HOST="10.0.0.50"
+   REMOTE_DIR="/home/backup/raspibolt-scb"
+   SSH_KEY="/home/lnd/.ssh/scb-backup"
+
+   STAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+
+   # Push a timestamped copy and also overwrite a "latest" file.
+   # The timestamped copies let you roll back; "latest" is what
+   # you'd grab in a real recovery.
+   scp -i "$SSH_KEY" -o StrictHostKeyChecking=yes \
+     "$SRC" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/channel-${STAMP}.backup"
+   scp -i "$SSH_KEY" -o StrictHostKeyChecking=yes \
+     "$SRC" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/channel.backup.latest"
+
+   logger -t scb-sync "channel.backup synced to ${REMOTE_HOST} as channel-${STAMP}.backup"
+   ```
+
+3. Make it executable:
+
+   ```bash
+   sudo chmod +x /usr/local/bin/scb-sync
+   ```
+
+## systemd path + service [#systemd-path--service]
+
+A **path unit** watches a file. When the file changes, systemd
+activates a matching **service unit**. The two go together.
+
+1. Create the service unit. This runs the sync script once and
+   exits:
+
+   ```bash
+   sudo nano /etc/systemd/system/scb-sync.service
+   ```
+
+   Paste:
+
+   ```ini
+   # RaspiBolt: ship channel.backup offsite on change
+   # /etc/systemd/system/scb-sync.service
+
+   [Unit]
+   Description=Sync LND channel.backup to offsite host
+   After=lnd.service
+
+   [Service]
+   Type=oneshot
+   User=lnd
+   ExecStart=/usr/local/bin/scb-sync
+   ```
+
+2. Create the path unit that triggers it:
+
+   ```bash
+   sudo nano /etc/systemd/system/scb-sync.path
+   ```
+
+   Paste:
+
+   ```ini
+   # RaspiBolt: watch channel.backup for changes
+   # /etc/systemd/system/scb-sync.path
+
+   [Unit]
+   Description=Watch LND channel.backup for changes
+   After=lnd.service
+
+   [Path]
+   PathChanged=/data/lnd/data/chain/bitcoin/mainnet/channel.backup
+   Unit=scb-sync.service
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+3. Enable and start the **path** unit (not the service, systemd
+   activates the service for you on file change):
+
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable scb-sync.path
+   sudo systemctl start scb-sync.path
+   sudo systemctl status scb-sync.path
+   ```
+
+## Test it [#test-it]
+
+1. As `admin`, follow the service journal in one SSH session:
+
+   ```bash
+   sudo journalctl -f -u scb-sync.service
+   ```
+
+2. In a second session, touch the backup file to simulate a
+   change. `touch` updates the mtime, which is enough to fire
+   `PathChanged`:
+
+   ```bash test:skip
+   sudo -u lnd touch /data/lnd/data/chain/bitcoin/mainnet/channel.backup
+   ```
+
+3. In the first session you should see
+   `Started Sync LND channel.backup to offsite host`, the scp
+   lines, and a clean exit.
+
+4. On the remote host, list the target directory. You should see
+   the timestamped file plus `channel.backup.latest`:
+
+   ```bash test:skip
+   ls -la ~/raspibolt-scb/
+   ```
+
+5. Keep the first session running for the first real channel
+   open or close. When LND updates the SCB for real, you should
+   see a fresh sync event land the same way.
+
+<Callout type="info" title="Rotate old copies">
+  Every channel state change produces a new file. Over years that
+  adds up, not a lot of bytes (the SCB is typically well under
+  100 KB), but a lot of entries. A cron job on the remote host that
+  keeps the last 100 timestamped copies plus `channel.backup.latest`
+  is plenty.
+</Callout>
+
+## Restore flow [#restore-flow]
+
+You only ever run through this when the Pi is toast. The high
+level is: fresh Pi, same 24-word seed, latest SCB, pray.
+
+1. Build a new Pi following the earlier sections. Get to the
+   point where LND is installed, `lnd.conf` is in place, and the
+   service is enabled, but **do not** run `lncli create` yet.
+
+2. Pull `channel.backup.latest` from your remote host onto the
+   new Pi:
+
+   ```bash test:skip
+   sudo -u lnd scp backup@10.0.0.50:/home/backup/raspibolt-scb/channel.backup.latest /tmp/channel.backup
+   ```
+
+3. Start LND in the foreground as the `lnd` user:
+
+   ```bash test:skip
+   sudo su - lnd
+   lnd
+   ```
+
+4. In a second session, create the wallet from the existing seed
+   **with** the SCB attached. The `--recovery_window` tells LND
+   how many derivation steps to scan for on-chain activity,
+   10000 is plenty for a home node. The `--multi_file` flag
+   tells `lncli create` to also accept an SCB:
+
+   ```bash test:skip
+   sudo su - lnd
+   lncli create
+   ```
+
+   Answer `y` to the "existing cipher seed" prompt and paste the
+   24 words. When prompted for an SCB, point at `/tmp/channel.backup`.
+
+   (Alternatively, create the wallet first and then run
+   `lncli restorechanbackup --multi_file /tmp/channel.backup`.
+   Same end result.)
+
+5. Watch the log. LND will reach out to each peer, ask them to
+   force-close at the latest state they know about, and wait.
+   The on-chain commit transactions take the usual time to
+   confirm; expect funds to land in your on-chain wallet over the
+   following hours or days, not minutes.
+
+6. Once all channels have settled, you can reopen new channels
+   against the restored on-chain balance, you're back in
+   business.
+
+<Callout type="warn" title="A stale SCB can cost you sats">
+  If the SCB you restore from is older than what your peers
+  actually have, LND will ask for a close at an outdated state.
+  Well-behaved peers will still close at the latest state they
+  know about (to their own benefit), and the amount you get back
+  is whatever the **peer** says you should, not whatever you
+  thought the balance was.
+
+  The sync above is designed to keep the SCB fresh to within
+  seconds. If you ever see a gap of days between the last sync and
+  "now", something broke, and you need to know about it. A small
+  cron job on the remote host that alerts on stale files is a good
+  idea.
+</Callout>
+
+## Close channels gracefully when you can [#close-channels-gracefully-when-you-can]
+
+Best-case recovery is the one you don't need: close your channels
+on your own terms **before** decommissioning a node. A cooperative
+close settles at the latest state with both peers agreeing,
+doesn't trigger commit-delay timeouts, and pays lower on-chain
+fees. Planning to retire the Pi or move to new hardware?
+
+```bash test:skip
+lncli listchannels
+lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
+```
+
+Close them one by one before you touch anything else.
+
+**Main takeaway:** the seed is half of recovery, the SCB is the
+other half, and the SCB is only useful if it lives somewhere the
+Pi's SSD can't take with it. Set up the sync, test it, and keep
+an eye on the freshness.
+
+
+# Overview (/docs/lightning)
+
+
+
+So Bitcoin is running. Why bolt a second network on top of it?
+
+Because Bitcoin's base layer is deliberately slow and deliberately
+expensive. Every transaction lands in a block that thousands of
+nodes worldwide will validate and store forever, and that's exactly
+what you want for settling serious money, not for buying a coffee.
+The **Lightning Network** is the second layer that fixes the coffee
+problem: payments settle in milliseconds, cost fractions of a cent,
+and only touch the base chain when a channel opens or closes.
+
+This section turns your Bitcoin node into a Lightning node.
+
+## What you'll do [#what-youll-do]
+
+By the end of this section you'll have:
+
+* **LND** running as a systemd service, connected to bitcoind over
+  RPC + ZMQ, and routing its own peer traffic through Tor.
+* A **24-word seed** written down on paper and locked away, the
+  only rope back to your on-chain funds if the Pi dies.
+* **Ride The Lightning (RTL)** on `https://rtl.raspibolt.local`,
+  reachable from your LAN so you can manage channels in a browser.
+* **Zeus** on your phone, connected to the Pi over a private Tor
+  onion, full node control from wherever you are.
+* An **automated channel backup** that rsyncs your
+  `channel.backup` file to an offsite host every time it changes.
+
+Budget roughly **two to three hours** of hands-on time, most of it
+waiting for `npm install` and your first channel to confirm.
+
+## Assumptions [#assumptions]
+
+* You finished the [Bitcoin](/docs/bitcoin) section and `bitcoind` is
+  **fully synced**, Lightning won't initial-sync its graph against
+  a blockchain that's still catching up.
+* `bitcoind` exposes the RPC port on `127.0.0.1:8332` and the ZMQ
+  streams on ports `28332` and `28333`, exactly as configured in
+  [Bitcoin client](/docs/bitcoin/bitcoin-client).
+* **Tor** is installed and its SOCKS proxy is live on
+  `127.0.0.1:9050` (see [Privacy](/docs/raspberry-pi/privacy)).
+* **Caddy** is running as the reverse proxy for your LAN-only
+  services, installed earlier in the Bitcoin section.
+
+If you want to see where LND plugs into everything else before
+diving in, [Architecture](/docs/architecture) has the full picture.
+
+<Callout type="warn" title="This is where it gets financially real">
+  Up until now, a bad step on the Pi costs you a reinstall. A bad
+  step on Lightning can cost you satoshis. The 24-word seed LND
+  generates is the **only** way to recover on-chain funds, and a
+  stale channel backup can mean peers settle against you. Before you
+  send meaningful amounts to this node, read
+  [Channel backup](/docs/lightning/channel-backup), then actually
+  set the backup up. Don't skip it.
+</Callout>
+
+## Pages in this section [#pages-in-this-section]
+
+1. [Lightning client](/docs/lightning/lightning-client), download,
+   verify, and run LND 0.20.1-beta; create the wallet and seed;
+   set up auto-unlock.
+2. [Web app](/docs/lightning/web-app), install Node.js and RTL
+   0.15.6; point it at LND; expose it through Caddy.
+3. [Mobile app](/docs/lightning/mobile-app), set up a Tor hidden
+   service for LND's REST API and pair the Zeus phone app with it.
+4. [Channel backup](/docs/lightning/channel-backup), watch the
+   `channel.backup` file and ship a copy offsite on every change;
+   walk through the restore flow.
+
+When Lightning is up, keep an eye on it for a few days before
+committing serious sats. Channels that open smoothly don't always
+close smoothly, and you'll want to see a few state updates flow
+through the backup pipeline before trusting it.
+
+
+# Lightning client (/docs/lightning/lightning-client)
+
+
+
+Which Lightning implementation should a first-time node run? You'll
+install **LND** (the Lightning Network Daemon) from
+[Lightning Labs](https://lightning.engineering), the most widely
+used, best-documented, and best-tooled implementation for a node
+operator who wants a web UI and a mobile app to work out of the box.
+Core Lightning and Eclair are excellent too, but LND has the
+ecosystem advantage, and that matters when you're starting out.
+
+This page takes you from zero to a running `lnd` service with a
+24-word seed, an auto-unlocking wallet, and a healthy `getinfo`
+response.
+
+<Callout type="warn" title="Real money from satoshi one">
+  Lightning isn't a testbed. The wallet you create here holds real
+  bitcoin, and every channel open or close is an on-chain transaction
+  that costs real fees. Until you have your 24-word seed **written
+  down on paper** and your `channel.backup` file syncing off-Pi
+  (next page after this one), don't fund the wallet. A lost seed or
+  missing SCB on a dead SSD means the funds are gone, no support desk.
+  Budget about **30 minutes** of hands-on time for this page.
+</Callout>
+
+## Create the system user and data directory [#create-the-system-user-and-data-directory]
+
+LND is a long-running daemon that manages real money. It gets its
+own unprivileged system user and a dedicated data directory on the
+SSD, with the home-directory `~/.lnd` path symlinked to the real
+location. Same pattern you used for `bitcoind`.
+
+1. As user `admin`, create the `lnd` user. Give it group membership
+   in `bitcoin` (so it can read `bitcoin.conf` for auto-RPC) and in
+   `debian-tor` (so it can read Tor's cookie file for the control
+   port):
+
+   ```bash
+   sudo adduser --disabled-password --gecos "" lnd
+   sudo usermod -a -G bitcoin,debian-tor lnd
+   sudo adduser admin lnd
+   ```
+
+   The third command puts `admin` into the `lnd` group so you can
+   run `lncli` later without `sudo`.
+
+2. Create the data directory on the SSD and hand it to `lnd`:
+
+   ```bash
+   sudo mkdir /data/lnd
+   sudo chown -R lnd:lnd /data/lnd
+   ```
+
+3. Open a shell as the `lnd` user and set up the symlinks. LND
+   looks for its data in `~/.lnd` by default; pointing that at
+   `/data/lnd` means every tool and tutorial that assumes the
+   default path still works:
+
+   ```bash
+   sudo su - lnd
+   ln -s /data/lnd /home/lnd/.lnd
+   ln -s /data/bitcoin /home/lnd/.bitcoin
+   ls -la
+   ```
+
+   The two symlinks should show in cyan, not red. Red means a
+   broken link, usually because the target directory doesn't exist
+   yet.
+
+## Download LND [#download-lnd]
+
+LND ships as a statically linked binary tarball. You'll download
+it, verify the SHA256 checksum, verify the GPG signature on the
+manifest, and only then copy the binaries into place.
+
+1. Still as the `lnd` user, grab the release archive, the manifest,
+   and the maintainer's signature:
+
+   ```bash
+   cd /tmp
+   wget https://github.com/lightningnetwork/lnd/releases/download/v0.20.1-beta/lnd-linux-arm64-v0.20.1-beta.tar.gz
+   wget https://github.com/lightningnetwork/lnd/releases/download/v0.20.1-beta/manifest-v0.20.1-beta.txt
+   wget https://github.com/lightningnetwork/lnd/releases/download/v0.20.1-beta/manifest-roasbeef-v0.20.1-beta.sig
+   ```
+
+2. Verify the checksum of the binary against the manifest. The
+   `--ignore-missing` flag lets you check only the file you
+   downloaded, not every platform listed in the manifest:
+
+   ```bash
+   sha256sum --check manifest-v0.20.1-beta.txt --ignore-missing
+   ```
+
+   Expected output:
+
+   ```text
+   lnd-linux-arm64-v0.20.1-beta.tar.gz: OK
+   ```
+
+## Verify the signature [#verify-the-signature]
+
+The checksum proves the download wasn't corrupted in transit. It
+does not prove the manifest itself is authentic, for that you need
+to verify the PGP signature against the maintainer's public key.
+LND releases are signed by Olaoluwa "Roasbeef" Osuntokun.
+
+1. Import the signing key from the LND repo (the
+   `scripts/keys/roasbeef.asc` path is the canonical source):
+
+   ```bash
+   curl https://raw.githubusercontent.com/lightningnetwork/lnd/master/scripts/keys/roasbeef.asc | gpg --import
+   ```
+
+2. Verify the manifest against the signature:
+
+   ```bash
+   gpg --verify manifest-roasbeef-v0.20.1-beta.sig manifest-v0.20.1-beta.txt
+   ```
+
+   Look for a `Good signature from "Olaoluwa Osuntokun"` line. The
+   full fingerprint should read
+   `A5B6 1896 952D 9FDA 83BC 054C DC42 612E 8923 7182`. GPG will
+   also warn that the key isn't certified with a trusted signature.
+   That's expected; you haven't built a web of trust around this
+   key, you've just pinned its fingerprint.
+
+<Callout type="info" title="Why GPG when we already have a checksum?">
+  A corrupt download trips the checksum. A compromised download
+  server serves a real binary with a **matching** checksum and a
+  forged manifest. The signature check is what catches that, the
+  attacker would also need Roasbeef's private key, which they do not
+  have.
+</Callout>
+
+## Install the binaries [#install-the-binaries]
+
+1. Step back out of the `lnd` shell first, installing binaries into
+   `/usr/local/bin` needs `admin`'s `sudo`:
+
+   ```bash
+   exit
+   ```
+
+2. Extract the archive and install both binaries:
+
+   ```bash
+   cd /tmp
+   tar -xvf lnd-linux-arm64-v0.20.1-beta.tar.gz
+   sudo install -m 0755 -o root -g root -t /usr/local/bin lnd-linux-arm64-v0.20.1-beta/*
+   lnd --version
+   ```
+
+   Expected output:
+
+   ```text
+   lnd version 0.20.1-beta commit=v0.20.1-beta
+   ```
+
+## Set the wallet unlock password [#set-the-wallet-unlock-password]
+
+LND's wallet is password-protected and asks for the password on
+every startup. You have two options:
+
+* **Manual unlock** every time the Pi reboots. Most secure at rest:
+  the password lives only in your head, but a power blip at 3 a.m.
+  leaves LND offline until you're awake to type a password.
+* **Auto-unlock** from a file on disk. Trades at-rest encryption
+  for uptime. On a single-user home node behind a firewall this is
+  the right default; an attacker who can read files as `lnd` has
+  already lost you the game.
+
+This guide picks auto-unlock. You can switch later.
+
+1. Become `lnd` again and create the password file, then enter
+   password `[C]` (one you haven't used anywhere else):
+
+   ```bash
+   sudo su - lnd
+   nano /data/lnd/password.txt
+   ```
+
+2. Lock the file down so only `lnd` can read it:
+
+   ```bash
+   chmod 600 /data/lnd/password.txt
+   ```
+
+## Write lnd.conf [#write-lndconf]
+
+LND reads its configuration from `/data/lnd/lnd.conf` (resolved
+via the `~/.lnd` symlink). This file does the heavy lifting,
+chain backend, Tor, channel policy, watchtower client, all of it.
+
+1. Create the config file:
+
+   ```bash
+   nano /data/lnd/lnd.conf
+   ```
+
+2. Paste the following. Replace `YourAlias` with whatever name you
+   want to show up in channel graphs, and pick a hex colour you
+   like:
+
+   ```ini
+   # RaspiBolt: lnd configuration
+   # /data/lnd/lnd.conf
+
+   [Application Options]
+   alias=YourAlias
+   color=#ff9900
+   debuglevel=info
+   maxpendingchannels=5
+   listen=localhost
+
+   # Auto-unlock the wallet from a file on disk.
+   # Comment out to unlock manually with `lncli unlock`.
+   wallet-unlock-password-file=/data/lnd/password.txt
+   wallet-unlock-allow-create=true
+
+   # TLS certificate: auto-renew and don't advertise LAN IPs
+   tlsautorefresh=true
+   tlsdisableautofill=true
+
+   # Channel defaults
+   bitcoin.basefee=1000
+   bitcoin.feerate=1
+   minchansize=100000
+   accept-keysend=true
+   accept-amp=true
+   coop-close-target-confs=24
+
+   # Drop stale invoices to keep the DB tidy
+   gc-canceled-invoices-on-startup=true
+   gc-canceled-invoices-on-the-fly=true
+
+   [bolt]
+   db.bolt.auto-compact=true
+   db.bolt.auto-compact-min-age=168h
+
+   [Bitcoin]
+   bitcoin.active=true
+   bitcoin.mainnet=true
+   bitcoin.node=bitcoind
+
+   [Bitcoind]
+   bitcoind.rpchost=127.0.0.1:8332
+   bitcoind.rpcuser=raspibolt
+   bitcoind.rpcpass=PASSWORD_B_REPLACE_ME
+   bitcoind.zmqpubrawblock=tcp://127.0.0.1:28332
+   bitcoind.zmqpubrawtx=tcp://127.0.0.1:28333
+
+   [tor]
+   tor.active=true
+   tor.v3=true
+   tor.streamisolation=true
+   tor.skip-proxy-for-clearnet-targets=true
+
+   [protocol]
+   protocol.wumbo-channels=true
+   protocol.option-scid-alias=true
+   protocol.simple-taproot-chans=true
+   protocol.rbf-coop-close=true
+
+   [wtclient]
+   wtclient.active=true
+   ```
+
+   Replace `PASSWORD_B_REPLACE_ME` with the `rpcpass` from your
+   `bitcoin.conf` (password `[B]` from the Bitcoin section).
+
+<Callout type="info" title="Stream isolation, and why we skip it for bitcoind">
+  `tor.streamisolation=true` gives every outbound Lightning
+  connection its own Tor circuit, so two peers can't correlate you
+  from the same exit. Good privacy default.
+
+  But `skip-proxy-for-clearnet-targets=true` is also on, which keeps
+  local clearnet connections, like the one to `bitcoind` on
+  `127.0.0.1:8332`, off of Tor entirely. Without that, LND tries to
+  send RPC calls through Tor to a localhost IP, and Tor (rightly)
+  refuses. The combination gives you Tor for everything public and
+  direct sockets for everything local.
+</Callout>
+
+## systemd unit [#systemd-unit]
+
+Running `lnd` by hand once is fine for the initial wallet setup.
+For actual operation you want it under systemd so it starts at
+boot, restarts after crashes, and only comes up after `bitcoind`
+is ready.
+
+1. Back as user `admin`, create the unit file:
+
+   ```bash
+   exit
+   sudo nano /etc/systemd/system/lnd.service
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: systemd unit for LND
+   # /etc/systemd/system/lnd.service
+
+   [Unit]
+   Description=LND Lightning Network Daemon
+   Wants=bitcoind.service
+   After=bitcoind.service
+
+   [Service]
+   ExecStart=/usr/local/bin/lnd
+   ExecStop=/usr/local/bin/lncli stop
+   User=lnd
+   Type=simple
+   Restart=always
+   RestartSec=30
+   TimeoutSec=240
+   LimitNOFILE=128000
+
+   # Hardening
+   PrivateTmp=true
+   ProtectSystem=full
+   NoNewPrivileges=true
+   PrivateDevices=true
+   MemoryDenyWriteExecute=true
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+3. Reload systemd and enable the unit (don't start it yet, you
+   need to create the wallet first):
+
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable lnd
+   ```
+
+## Create the wallet and the seed [#create-the-wallet-and-the-seed]
+
+First start is a two-window affair: LND runs in the foreground in
+one SSH session and waits for you to create the wallet from a
+second session.
+
+1. Still as `admin`, start LND in the foreground:
+
+   ```bash test:skip
+   sudo su - lnd
+   lnd
+   ```
+
+   You'll see it print startup logs and then sit on a line like
+   `Waiting for wallet encryption password. Use 'lncli create' ...`.
+   Leave this window open.
+
+2. Open a **second** SSH session to the Pi. Become the `lnd` user
+   and run `lncli create`:
+
+   ```bash test:skip
+   sudo su - lnd
+   lncli create
+   ```
+
+3. At the prompts:
+   * Enter password `[C]` as the wallet password. Use exactly the
+     same password you wrote into `password.txt`.
+   * When asked about an existing cipher seed, answer `n`, you
+     want a fresh seed.
+   * When asked about a seed passphrase, press Enter to skip it
+     unless you know what you're doing. A passphrase adds a 25th
+     word that you also have to back up; lose it and the 24 words
+     alone will not restore the wallet.
+
+4. LND prints a 24-word cipher seed. &#x2A;*Stop scrolling. Read this
+   part.**
+
+<Callout type="error" title="The 24-word seed is your on-chain wallet">
+  These 24 words are the only rope back to the on-chain funds on
+  this node. If the Pi dies, the SSD dies, or the house burns down,
+  the seed, and **only** the seed, can restore your wallet on a
+  fresh LND.
+
+  * **Write the words down on paper.** Twice. Keep the two copies in
+    two different physical locations.
+  * **Do not** photograph the screen, do not type the words into any
+    text file, do not email them to yourself, do not put them in a
+    password manager unless it's one you trust with your life.
+  * The [RaspiBolt backup card](https://github.com/raspibolt/raspibolt/blob/master/resources/raspibolt-backup-card.pdf)
+    is a nice printable template if you want one.
+  * Anyone with these words can empty every on-chain sat on this
+    node. The seed does **not** restore Lightning channel balances,
+    for that, see [Channel backup](/docs/lightning/channel-backup).
+
+  Seriously. Write it down before you go any further.
+</Callout>
+
+Once the seed is recorded, exit the second session:
+
+```bash
+exit
+exit
+```
+
+Back in the first window where `lnd` is still running, stop it with
+`Ctrl-C`. Then start it again in the foreground to confirm the
+auto-unlock works:
+
+```bash test:skip
+lnd
+```
+
+Look for `Attempting automatic wallet unlock with password` and
+`Opened wallet`. Stop it again with `Ctrl-C` and exit the `lnd`
+user session:
+
+```bash
+exit
+```
+
+## Start LND under systemd [#start-lnd-under-systemd]
+
+1. As `admin`, start the service and follow the log:
+
+   ```bash
+   sudo systemctl start lnd
+   sudo journalctl -f -u lnd
+   ```
+
+   Wait until you see `LNWL: Opened wallet` and then graph-sync
+   progress. Exit the log tail with `Ctrl-C`.
+
+2. Let `admin` use `lncli` without `sudo`. The `admin` user is
+   already in the `lnd` group; the remaining permissions tweak is
+   a symlink and a group-read bit on the macaroon:
+
+   ```bash test:skip
+   ln -s /data/lnd /home/admin/.lnd
+   sudo chmod -R g+X /data/lnd/data/
+   sudo chmod g+r /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon
+   ```
+
+3. Log out of the SSH session and log back in, group membership
+   only takes effect on a fresh shell. Then smoke-test:
+
+   ```bash test:skip
+   lncli getinfo
+   lncli getnetworkinfo
+   ```
+
+   `getinfo` should return an `identity_pubkey`, the current
+   `block_height`, and `synced_to_chain: true` once LND has caught
+   up with the graph. `getnetworkinfo` should show a non-zero
+   number of nodes and channels, proof that LND is talking to the
+   wider Lightning network over Tor.
+
+**Main takeaway:** LND is up, the wallet is unlocked, the 24-word
+seed is on paper, and `lncli` works from `admin`. You have a
+working Lightning node.
+
+## Fund the node and open a channel [#fund-the-node-and-open-a-channel]
+
+1. Generate a native-SegWit address and send a small amount of
+   on-chain sats to it from another wallet:
+
+   ```bash test:skip
+   lncli newaddress p2wkh
+   ```
+
+   Wait for one confirmation, then:
+
+   ```bash test:skip
+   lncli walletbalance
+   ```
+
+2. Pick a well-connected peer from
+   [Amboss](https://amboss.space) or
+   [LightningNetwork+](https://lightningnetwork.plus). A peer URI
+   looks like `pubkey@host:port`. Connect, then open a channel
+   (capacity in sats, explicit fee in sats/vByte from
+   [mempool.space](https://mempool.space)):
+
+   ```bash test:skip
+   lncli connect 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f@34.239.230.56:9735
+   lncli openchannel --sat_per_vbyte 8 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f 200000 0
+   ```
+
+   Three confirmations later the channel is active:
+
+   ```bash test:skip
+   lncli listchannels
+   ```
+
+<Callout type="info" title="Before you open channels in anger">
+  Set up [Channel backup](/docs/lightning/channel-backup) **before**
+  you open your first real channel. The backup is only useful if it
+  exists when you need it, and you need it as soon as the first
+  channel lands.
+</Callout>
+
+## Add watchtowers [#add-watchtowers]
+
+Lightning channels assume both sides are honest. If a peer tries
+to settle an old channel state while your node is offline, they
+walk away with funds that should have been yours. Watchtowers are
+third-party nodes that watch your channels for you and punish
+cheaters, and because the worst a watchtower can do is fail
+silently, you don't have to trust them.
+
+You already enabled `wtclient.active=true` in `lnd.conf`. Add a
+tower or two:
+
+```bash test:skip
+sudo su - lnd
+lncli wtclient add 023bad37e5795654cecc69b43599da8bd5789ac633c098253f60494bde602b60bf@iiu4epqzm6cydqhezueenccjlyzrqeruntlzbx47mlmdgfwgtrll66qd.onion:9911
+lncli wtclient towers
+```
+
+Openoms maintains a
+[list of public altruistic watchtowers](https://github.com/openoms/lightning-node-management/issues/4);
+add two or three more for redundancy.
+
+## Useful lncli commands [#useful-lncli-commands]
+
+A small reference you'll come back to:
+
+```bash test:skip
+# node info and peers
+lncli getinfo
+lncli listpeers
+
+# channels
+lncli pendingchannels
+lncli listchannels
+lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
+lncli closechannel --force <funding_txid> <output_index>
+
+# payments
+lncli decodepayreq <invoice>
+lncli payinvoice <invoice>
+lncli sendpayment --amp --dest=<pubkey> --amt=<sats>
+lncli addinvoice <sats>
+lncli listinvoices
+lncli listpayments
+
+# help
+lncli
+lncli help <command>
+```
+
+Full API reference at
+[api.lightning.community](https://api.lightning.community).
+
+## Upgrading LND [#upgrading-lnd]
+
+LND release notes are non-negotiable reading, some releases ship
+database migrations that are one-way. Before every upgrade:
+
+1. Read the
+   [release notes](https://github.com/lightningnetwork/lnd/releases)
+   end to end.
+2. Stop the service: `sudo systemctl stop lnd`.
+3. Repeat the download, verify, and install steps above with the
+   new version.
+4. Update `0.20.1-beta` in `lib/versions.ts` so the rest of the
+   guide agrees.
+5. Start the service: `sudo systemctl start lnd` and tail the log
+   until you see `synced_to_chain: true`.
+
+
+# Mobile app (/docs/lightning/mobile-app)
+
+
+
+What does a Lightning node on the go look like? For this guide,
+it's [Zeus](https://zeusln.app), an open-source mobile app (iOS
+and Android) that talks directly to your own LND instance. No
+custodian, no cloud relay, no third-party pairing server. Zeus
+reaches your node over a **Tor hidden service**, which means your
+Pi's address stays secret and your home IP stays off Lightning
+Network traffic from your phone.
+
+You'll set up a dedicated onion for LND's REST API, mint a QR
+code containing the onion URL, the port, and the admin macaroon,
+then scan it with Zeus.
+
+<Screenshot src="/images/lightning_zeus.png" alt="Zeus mobile wallet showing node balance, recent payments, and channel list" caption="Zeus on iOS, connected to LND via a Tor hidden service" />
+
+## Add a hidden service for LND REST [#add-a-hidden-service-for-lnd-rest]
+
+Tor is already running on your Pi (set up in
+[Privacy](/docs/raspberry-pi/privacy)). Adding a hidden service
+for LND's REST API is three more lines in `torrc`.
+
+1. As user `admin`, open the Tor configuration:
+
+   ```bash
+   sudo nano /etc/tor/torrc
+   ```
+
+2. Scroll to the section marked &#x2A;*"This section is just for
+   location-hidden services"** and add:
+
+   ```text
+   # Hidden service for LND REST (Zeus)
+   HiddenServiceDir /var/lib/tor/hidden_service_lnd_rest/
+   HiddenServiceVersion 3
+   HiddenServicePort 8080 127.0.0.1:8080
+   ```
+
+3. Reload Tor and read the generated onion address:
+
+   ```bash
+   sudo systemctl reload tor
+   sudo cat /var/lib/tor/hidden_service_lnd_rest/hostname
+   ```
+
+   You'll get back a string like `abcdefg...xyz.onion`. Save it in
+   your password manager, this is the only thing that lets Zeus
+   find your node, and by design nothing else on the internet can.
+
+<Callout type="info" title="Why an onion, not a public IP?">
+  A hidden service address is 56 random base32 characters, the
+  internet equivalent of an unlisted phone number. Anyone who
+  doesn't have the string cannot connect, cannot scan for it, and
+  cannot even tell that your Pi exists as a Lightning endpoint.
+  That's a far stronger privacy position than opening port 8080 on
+  your router.
+</Callout>
+
+## Allow LND REST on loopback [#allow-lnd-rest-on-loopback]
+
+LND's REST API already listens on `127.0.0.1:8080` by default;
+the hidden service above forwards the onion's port 8080 to that
+loopback socket, so nothing new needs to open on the firewall.
+
+Confirm the port is live:
+
+```bash
+sudo ss -tulpn | grep 8080
+```
+
+You should see `lnd` listening on `127.0.0.1:8080`. If not, your
+`lnd.conf` overrides the default, check for a
+`restlisten` line and remove it or point it at `127.0.0.1:8080`.
+
+## Build the Zeus connect QR [#build-the-zeus-connect-qr]
+
+Zeus has a built-in QR scanner that reads a JSON payload
+containing the onion URL, the port, and the admin macaroon as hex.
+You'll paste that JSON into a QR code on the Pi, maximise the
+terminal window, and scan it with the phone.
+
+1. Install `qrencode` for the QR render, and `xxd` for the macaroon
+   hex/base64 conversion below. On Debian 13, `xxd` is its own
+   package and isn't pulled in by default:
+
+   ```bash
+   sudo apt install -y qrencode jq xxd
+   ```
+
+2. Grab the admin macaroon as uppercase hex:
+
+   ```bash
+   MACAROON_HEX=$(sudo xxd -ps -u -c 1000 /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon)
+   ```
+
+3. Grab the onion hostname:
+
+   ```bash
+   ONION=$(sudo cat /var/lib/tor/hidden_service_lnd_rest/hostname)
+   ```
+
+4. Build the Zeus config URL and render it as a QR code in the
+   terminal. The `lndconnect://` scheme is what Zeus expects:
+
+   ```bash
+   URL="lndconnect://${ONION}:8080?macaroon=$(echo -n "$MACAROON_HEX" | xxd -r -p | base64 | tr '+/' '-_' | tr -d '=')"
+   qrencode -t ANSIUTF8 -m 2 "$URL"
+   ```
+
+   Maximise your terminal window and shrink the font with
+   `Ctrl`-`-` until the whole QR fits on screen.
+
+<Callout type="warn" title="The QR code contains the admin macaroon">
+  Anyone who can photograph this screen has full control of your
+  Lightning node. Don't screenshot it. Don't paste it into a chat.
+  Close the terminal as soon as Zeus has paired.
+</Callout>
+
+## Pair Zeus [#pair-zeus]
+
+1. Install Zeus on your phone.
+   [zeusln.app](https://zeusln.app) has the direct links, Apple
+   App Store, Google Play, F-Droid, or a direct APK download if
+   you prefer to sideload.
+
+2. On the phone, make sure you have a Tor pathway. Zeus can
+   either:
+   * Use **Orbot** (Android) or **Onion Browser** (iOS) as an
+     external Tor proxy, the traditional setup, and the one this
+     guide assumes.
+   * Use its **built-in Tor daemon** (Android only, toggle in
+     Zeus settings), convenient, but note that channel ops will
+     fail if the app is backgrounded aggressively by Android's
+     battery optimiser.
+
+3. Open Zeus, tap **Get Started**, then **Connect a node**.
+
+4. Tap the &#x2A;*+** at the top right, give the node a nickname
+   (`RaspiBolt` works), choose **LND** as the interface and
+   **REST** as the connection type, then tap **Scan lndconnect
+   config**.
+
+5. Scan the QR code from the Pi. Zeus fills in the onion URL,
+   port, and macaroon automatically.
+
+6. Tap **Save node config**. First connection takes a while,
+   Zeus has to build a Tor circuit to your hidden service, so
+   give it a minute.
+
+7. Set a Zeus PIN or password under
+   **Settings → Security**. Someone with your unlocked phone has
+   full control of your node.
+
+## Stream isolation caveat [#stream-isolation-caveat]
+
+You set `tor.streamisolation=true` in `lnd.conf`, this means
+every outbound Lightning channel uses its own Tor circuit, and
+peers cannot correlate you across channels. That setting only
+affects LND's **outbound** connections to Lightning peers. It
+does not affect incoming hidden-service traffic from Zeus, which
+always arrives on the hidden-service circuit regardless.
+
+In other words: Zeus over Tor works exactly the same with or
+without stream isolation enabled. The privacy win of stream
+isolation is elsewhere.
+
+## Troubleshooting [#troubleshooting]
+
+### Zeus hangs on "Connecting..." [#zeus-hangs-on-connecting]
+
+* Tor on the Pi isn't running: `sudo systemctl status tor`.
+* Orbot on the phone isn't running, or the phone doesn't have
+  internet connectivity.
+* LND REST isn't on `127.0.0.1:8080`: `sudo ss -tulpn | grep 8080`.
+* The onion hostname in the QR doesn't match
+  `/var/lib/tor/hidden_service_lnd_rest/hostname`, regenerate the
+  QR.
+
+### "Unable to connect to LND" [#unable-to-connect-to-lnd]
+
+* Macaroon is malformed. Regenerate the QR with the exact
+  commands above; the base64url encoding matters.
+* LND is locked (password-file auto-unlock didn't trigger).
+  Check `sudo systemctl status lnd` and look for
+  `Opened wallet`.
+
+### Payments fail with "no route" [#payments-fail-with-no-route]
+
+* This is a node liquidity problem, not a Zeus problem. Check
+  channel balances in RTL and rebalance if needed.
+
+**Main takeaway:** you have full, private control of your
+Lightning node from your phone, payments, channel management,
+invoicing, with zero third-party infrastructure between you and
+your own Pi.
+
+## Remove Zeus access later [#remove-zeus-access-later]
+
+If you ever want to pull the plug on Zeus pairing, phone lost,
+switching apps, retiring the node, comment out the three hidden
+service lines in `/etc/tor/torrc`:
+
+```text
+#HiddenServiceDir /var/lib/tor/hidden_service_lnd_rest/
+#HiddenServiceVersion 3
+#HiddenServicePort 8080 127.0.0.1:8080
+```
+
+Reload Tor:
+
+```bash
+sudo systemctl reload tor
+```
+
+The onion address goes dark. Zeus immediately loses its connection.
+
+
+# Web app (/docs/lightning/web-app)
+
+
+
+What does a Lightning node look like once you step away from the
+command line? For this guide, it looks like
+[Ride The Lightning](https://github.com/Ride-The-Lightning/RTL)
+(RTL), a well-maintained open-source web dashboard for LND that
+covers channels, on-chain, routing, and fees in one place. No
+phone-home telemetry, no account, no upstream service; RTL runs on
+your Pi and talks to LND over the loopback interface.
+
+You'll install Node.js 22, clone RTL 0.15.6 as its own
+unprivileged user, point it at LND's macaroon and TLS certificate,
+and expose it behind Caddy at `https://rtl.raspibolt.local` on your
+LAN.
+
+<Screenshot src="/images/lightning_rtl.png" alt="Ride The Lightning dashboard showing channel list, balances, and routing stats" caption="Ride The Lightning: channels, on-chain, routing, fees, all in one dashboard" />
+
+## Install Node.js 22 [#install-nodejs-22]
+
+RTL is a Node.js application and needs a recent LTS runtime. The
+NodeSource repository gives you upstream Node without waiting for
+Debian backports.
+
+1. As user `admin`, add the NodeSource GPG key and apt source:
+
+   ```bash
+   sudo apt update
+   sudo apt install -y ca-certificates curl gnupg
+   sudo mkdir -p /etc/apt/keyrings
+   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+   echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+     | sudo tee /etc/apt/sources.list.d/nodesource.list
+   ```
+
+2. Install Node and verify:
+
+   ```bash
+   sudo apt update
+   sudo apt install -y nodejs
+   node --version
+   npm --version
+   ```
+
+   Expected output, a `v22.x` line from `node`, and a `10.x` or
+   newer line from `npm`:
+
+   ```text
+   v22.22.2
+   10.9.7
+   ```
+
+<Callout type="info" title="If you already installed Node for the Bitcoin Explorer">
+  BTC RPC Explorer uses the same NodeSource setup. If Node 22 is
+  already present, skip this whole section.
+</Callout>
+
+## Create the rtl user [#create-the-rtl-user]
+
+RTL should not run as the `lnd` user, it's a web app with an
+exposed HTTP port, and a compromise there should not hand an
+attacker LND's admin macaroon. A dedicated `rtl` user keeps the
+blast radius small.
+
+1. Create the user and copy in a read-only copy of LND's admin
+   macaroon. RTL only needs to **read** the macaroon; the copy is
+   what keeps `rtl` out of `/data/lnd`:
+
+   ```bash
+   sudo adduser --disabled-password --gecos "" rtl
+   sudo mkdir -p /home/rtl/lnd
+   sudo cp /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon /home/rtl/lnd/admin.macaroon
+   sudo cp /data/lnd/tls.cert /home/rtl/lnd/tls.cert
+   sudo chown -R rtl:rtl /home/rtl/lnd
+   sudo chmod 600 /home/rtl/lnd/admin.macaroon
+   ```
+
+<Callout type="warn" title="The admin macaroon is the keys to the castle">
+  Anyone with `admin.macaroon` and network reach to LND's gRPC port
+  can open channels, close channels, and send payments. It is not
+  the seed, but it can drain active channels. Keep the file locked
+  down and do not commit it to any repository.
+</Callout>
+
+## Install RTL [#install-rtl]
+
+1. Become the `rtl` user, clone the repo, and check out the pinned
+   release tag:
+
+   ```bash
+   sudo su - rtl
+   git clone https://github.com/Ride-The-Lightning/RTL.git
+   cd RTL
+   git checkout v0.15.6
+   ```
+
+2. Verify the tag signature. RTL tags are signed by Suheb; fetch
+   the key and verify:
+
+   ```bash
+   curl https://keybase.io/suheb/pgp_keys.asc | gpg --import
+   git verify-tag v0.15.6
+   ```
+
+   Look for `Good signature from "saubyk"`. The primary key
+   fingerprint is `3E9B D443 6C28 8039 CA82 7A92 00C9 E2BC 2E45 666F`.
+
+3. Install production dependencies. This pulls a few hundred
+   packages and can take ten minutes or more, the process
+   occasionally appears frozen on a single package, it's fine:
+
+   ```bash
+   npm install --omit=dev --legacy-peer-deps
+   ```
+
+   Success looks like `added NNN packages ... found 0 vulnerabilities`.
+
+## Configure RTL [#configure-rtl]
+
+RTL ships a sample config; you copy it, edit a handful of fields,
+and you're done.
+
+1. As user `rtl`, still in `/home/rtl/RTL`:
+
+   ```bash
+   cp Sample-RTL-Config.json RTL-Config.json
+   nano RTL-Config.json
+   ```
+
+2. Change these four values. `multiPass` is the password you'll
+   use to log into the RTL UI, make it a new one, password `[E]`,
+   not reused from anywhere else:
+
+   ```json
+   "multiPass": "PASSWORD_E",
+   "macaroonPath": "/home/rtl/lnd",
+   "swapMacaroonPath": "/home/rtl/lnd",
+   "boltzMacaroonPath": "/home/rtl/lnd"
+   ```
+
+3. Further down in the `nodes` → `settings` block, point RTL at
+   LND on loopback. Leave the URLs as-is if the sample already
+   uses `127.0.0.1`; change `localhost` to `127.0.0.1` if you see
+   it, Node 18+ resolves `localhost` via IPv6 first, which LND
+   doesn't listen on:
+
+   ```json
+   "lnServerUrl": "https://127.0.0.1:8080",
+   "swapServerUrl": "https://127.0.0.1:8081",
+   "boltzServerUrl": "https://127.0.0.1:9003"
+   ```
+
+   Also set `fiatConversion` to `true` if you want USD/EUR totals
+   in the UI, and leave `Authentication → logoutRedirectLink`
+   alone.
+
+4. Save, exit, and leave the `rtl` user session:
+
+   ```bash
+   exit
+   ```
+
+<Callout type="info" title="Multi-node support">
+  RTL can manage multiple LND, Core Lightning, or Eclair nodes from
+  one UI. This guide sticks to a single LND node for simplicity,
+  when you're ready, the
+  [RTL docs](https://github.com/Ride-The-Lightning/RTL#readme)
+  walk through adding more in the same `RTL-Config.json`.
+</Callout>
+
+## systemd unit [#systemd-unit]
+
+1. As `admin`, create the unit file:
+
+   ```bash
+   sudo nano /etc/systemd/system/rtl.service
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: systemd unit for Ride The Lightning
+   # /etc/systemd/system/rtl.service
+
+   [Unit]
+   Description=Ride The Lightning
+   Wants=lnd.service
+   After=lnd.service
+
+   [Service]
+   WorkingDirectory=/home/rtl/RTL
+   ExecStart=/usr/bin/node rtl
+   User=rtl
+   Restart=always
+   RestartSec=30
+
+   # Hardening
+   PrivateTmp=true
+   ProtectSystem=full
+   NoNewPrivileges=true
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+3. Enable and start:
+
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable rtl
+   sudo systemctl start rtl
+   sudo journalctl -f -u rtl
+   ```
+
+   The log should end with
+   `Server is up and running, please open the UI at http://localhost:3000`.
+   Exit the tail with `Ctrl-C`.
+
+## Expose RTL through Caddy [#expose-rtl-through-caddy]
+
+RTL listens on `127.0.0.1:3000`, plain HTTP, bound to loopback.
+You'll front it with **Caddy** (already installed in the Bitcoin
+section) so you can reach it over HTTPS from anywhere on your LAN.
+Caddy's internal CA issues a self-signed cert on the fly, which
+your browser will warn about exactly once when you trust the root.
+
+1. Open Caddy's site config:
+
+   ```bash
+   sudo nano /etc/caddy/Caddyfile
+   ```
+
+2. Add a site block for RTL. The `tls internal` line tells Caddy
+   to mint a cert from its own CA rather than trying Let's Encrypt
+   (which won't work for a `.local` hostname anyway):
+
+   ```text
+   rtl.raspibolt.local {
+     reverse_proxy localhost:3000
+     tls internal
+   }
+   ```
+
+3. Reload Caddy and open the firewall for HTTPS on the LAN:
+
+   ```bash
+   sudo systemctl reload caddy
+   sudo ufw allow from 192.168.0.0/16 to any port 443 proto tcp comment 'HTTPS LAN only'
+   ```
+
+   Replace `192.168.0.0/16` with whatever your home LAN actually
+   uses. If you want RTL reachable from anywhere on the LAN
+   without LAN-scoping, drop the `from` clause, but think twice.
+
+4. Point your desktop browser at `https://rtl.raspibolt.local`.
+   If your router resolves `.local` mDNS names, this works as-is;
+   if not, either add a DNS entry on your router or hit the Pi's
+   IP directly and trust the cert warning for that hostname.
+
+   Log in with password `[E]`.
+
+<Callout type="info" title="Why self-signed is fine at home">
+  Let's Encrypt needs a public DNS name and an internet-reachable
+  port 80 or a DNS-01 challenge. Your home node has neither, and
+  publishing the RTL dashboard on the open internet is not something
+  this guide recommends. Caddy's internal CA produces a perfectly
+  good TLS cert; the browser warning is a one-time "I trust this
+  host on my LAN" click. If you want a trusted cert for your LAN,
+  use DNS-01 with a real domain you own, but that's a separate
+  bonus guide.
+</Callout>
+
+## Walk around the UI [#walk-around-the-ui]
+
+First-login tour:
+
+* **Home**, headline numbers. On-chain balance, channel balance,
+  payments, invoices, and node ranking at a glance.
+* **Lightning → Channels**, open channels, pending channels, and
+  the button to open a new one. Channel policy (base fee, fee
+  rate, time lock) lives in the per-channel view.
+* **Lightning → Payments**, pay an invoice by pasting it, or
+  generate one to receive. The payments table shows every Lightning
+  payment the node has sent.
+* **Routing**, earnings from forwarded payments, plus a per-peer
+  breakdown. This is where you'll see whether your channel policy
+  is attracting any volume.
+* **On-chain**, deposits, sends, UTXOs, and the sweep tool.
+* **Node Settings → Services → Watchtowers**, the towers you
+  configured with `lncli wtclient add` show up here too.
+
+**Main takeaway:** you now have a proper dashboard on your LAN.
+Everything `lncli` does, RTL does with a mouse, plus graphs.
+
+## Upgrading RTL [#upgrading-rtl]
+
+1. As `admin`, stop the service and become `rtl`:
+
+   ```bash
+   sudo systemctl stop rtl
+   sudo su - rtl
+   cd /home/rtl/RTL
+   ```
+
+2. Fetch, find the latest tag, check it out, verify the signature,
+   reinstall dependencies:
+
+   ```bash
+   git fetch
+   git reset --hard
+   latest=$(git tag | grep -E "v[0-9]+\.[0-9]+\.[0-9]+$" | sort --version-sort | tail -n 1)
+   echo "$latest"
+   git checkout "$latest"
+   git verify-tag "$latest"
+   npm install --omit=dev --legacy-peer-deps
+   exit
+   ```
+
+3. Update `0.15.6` in `lib/versions.ts` to keep this
+   guide honest, then restart:
+
+   ```bash
+   sudo systemctl start rtl
+   sudo journalctl -f -u rtl
+   ```
 
 
 # Overview (/docs/raspberry-pi)
@@ -3301,1538 +4841,6 @@ On an 8 GB Pi 5, the default 2 GB zram swap is plenty.
   pages are compressed and kept in RAM, so an 8 GB Pi effectively gets
   a little more memory without ever touching the disk.
 </Callout>
-
-
-# Channel backup (/docs/lightning/channel-backup)
-
-
-
-The 24-word seed restores your on-chain wallet. It does **not**
-restore your Lightning channels. For that you need the **Static
-Channel Backup**, a small file LND updates every time a channel
-state changes, and the missing half of a complete recovery plan.
-
-This page explains what the SCB can and can't do, walks you
-through an automated offsite sync, and covers the restore flow.
-
-## What the SCB actually does [#what-the-scb-actually-does]
-
-The Static Channel Backup (SCB) is a single file:
-`/data/lnd/data/chain/bitcoin/mainnet/channel.backup`. LND rewrites
-it every time a channel opens, closes, or changes state. It
-contains enough information, each peer's pubkey, the channel
-funding outpoint, the commit transaction, for a **new** LND
-instance to know who to ask for funds back.
-
-It does **not** re-open your channels. It does **not** give you
-access to off-chain liquidity on a fresh node. What it does, on
-restore, is send a request to every channel peer asking them to
-force-close the channel at the latest state they know about. Your
-funds then land in your on-chain wallet after the usual
-commit-timeout.
-
-The consequences matter:
-
-* **Recovery depends on your peers being online and honest.** An
-  offline peer means locked funds until they come back. A
-  malicious peer could, in principle, refuse.
-* **Your SCB must be current.** If the peer closes at a state
-  newer than the one in your SCB, LND sees a state it doesn't
-  recognise and refuses to claim. You'll still get a force-close
-  from the peer, just the slow path, not the SCB-accelerated one.
-* **Never use the SCB on a node that is still running the same
-  channels elsewhere.** Restoring triggers force-closes; doing
-  that against a node that thinks the channels are fine gets your
-  balances punished to the peer. Treat the SCB like a one-shot
-  recovery tool.
-
-<Callout type="warn" title="The SCB is only useful if it's offsite">
-  A channel backup that lives on the same SSD as LND is no backup
-  at all, the scenario it's meant to survive is the SSD dying. The
-  whole point of this page is to get a copy of `channel.backup` onto
-  a machine that isn't the Pi.
-</Callout>
-
-## Strategy [#strategy]
-
-This guide sets up one thing: a **systemd path unit** that watches
-`channel.backup&#x60; for changes and an **`scp` script** that ships
-the file to a remote host on every update. No polling, no cron,
-no extra long-running process, systemd notices the file change,
-fires the service, the service copies the file, and goes away.
-
-You need:
-
-* A **remote host** you trust, another machine on your LAN, a
-  VPS you own, an always-on box at a friend's place, or a cheap
-  home NAS. Anywhere `ssh` can reach.
-* An **SSH key** on the Pi that you've added to
-  `~/.ssh/authorized_keys` on the remote host.
-
-The rest of this page assumes the remote host is at
-`backup@10.0.0.50` with the SCB going into
-`/home/backup/raspibolt-scb/`. Substitute your own host, user,
-and path.
-
-## Set up the SSH key for lnd [#set-up-the-ssh-key-for-lnd]
-
-The sync has to run as the `lnd` user, that's the only account
-that can read `channel.backup`. So the SSH key lives in
-`/home/lnd/.ssh/`.
-
-1. As `admin`, become `lnd` and generate a key (no passphrase,
-   a passphrase would defeat unattended sync):
-
-   ```bash
-   sudo su - lnd
-   ssh-keygen -t ed25519 -f /home/lnd/.ssh/scb-backup -N ""
-   cat /home/lnd/.ssh/scb-backup.pub
-   ```
-
-2. Copy the public key into the remote host's
-   `authorized_keys`. On the **remote host**, run:
-
-   ```bash test:skip
-   mkdir -p ~/.ssh
-   chmod 700 ~/.ssh
-   echo "ssh-ed25519 AAAA...your-pubkey-here... lnd@raspibolt" >> ~/.ssh/authorized_keys
-   chmod 600 ~/.ssh/authorized_keys
-   mkdir -p ~/raspibolt-scb
-   ```
-
-3. Back on the **Pi** as `lnd`, do the first connection by hand
-   so the remote host's fingerprint lands in `known_hosts`:
-
-   ```bash test:skip
-   ssh -i /home/lnd/.ssh/scb-backup backup@10.0.0.50 "echo ok"
-   ```
-
-   Accept the fingerprint. You should see `ok`. Exit the `lnd`
-   session:
-
-   ```bash
-   exit
-   ```
-
-## Write the sync script [#write-the-sync-script]
-
-1. As `admin`, create the script:
-
-   ```bash
-   sudo nano /usr/local/bin/scb-sync
-   ```
-
-2. Paste:
-
-   ```bash
-   #!/bin/bash
-   # RaspiBolt: push channel.backup to an offsite host on change
-   # /usr/local/bin/scb-sync
-
-   set -euo pipefail
-
-   SRC="/data/lnd/data/chain/bitcoin/mainnet/channel.backup"
-   REMOTE_USER="backup"
-   REMOTE_HOST="10.0.0.50"
-   REMOTE_DIR="/home/backup/raspibolt-scb"
-   SSH_KEY="/home/lnd/.ssh/scb-backup"
-
-   STAMP=$(date -u +"%Y%m%dT%H%M%SZ")
-
-   # Push a timestamped copy and also overwrite a "latest" file.
-   # The timestamped copies let you roll back; "latest" is what
-   # you'd grab in a real recovery.
-   scp -i "$SSH_KEY" -o StrictHostKeyChecking=yes \
-     "$SRC" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/channel-${STAMP}.backup"
-   scp -i "$SSH_KEY" -o StrictHostKeyChecking=yes \
-     "$SRC" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/channel.backup.latest"
-
-   logger -t scb-sync "channel.backup synced to ${REMOTE_HOST} as channel-${STAMP}.backup"
-   ```
-
-3. Make it executable:
-
-   ```bash
-   sudo chmod +x /usr/local/bin/scb-sync
-   ```
-
-## systemd path + service [#systemd-path--service]
-
-A **path unit** watches a file. When the file changes, systemd
-activates a matching **service unit**. The two go together.
-
-1. Create the service unit. This runs the sync script once and
-   exits:
-
-   ```bash
-   sudo nano /etc/systemd/system/scb-sync.service
-   ```
-
-   Paste:
-
-   ```ini
-   # RaspiBolt: ship channel.backup offsite on change
-   # /etc/systemd/system/scb-sync.service
-
-   [Unit]
-   Description=Sync LND channel.backup to offsite host
-   After=lnd.service
-
-   [Service]
-   Type=oneshot
-   User=lnd
-   ExecStart=/usr/local/bin/scb-sync
-   ```
-
-2. Create the path unit that triggers it:
-
-   ```bash
-   sudo nano /etc/systemd/system/scb-sync.path
-   ```
-
-   Paste:
-
-   ```ini
-   # RaspiBolt: watch channel.backup for changes
-   # /etc/systemd/system/scb-sync.path
-
-   [Unit]
-   Description=Watch LND channel.backup for changes
-   After=lnd.service
-
-   [Path]
-   PathChanged=/data/lnd/data/chain/bitcoin/mainnet/channel.backup
-   Unit=scb-sync.service
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-3. Enable and start the **path** unit (not the service, systemd
-   activates the service for you on file change):
-
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable scb-sync.path
-   sudo systemctl start scb-sync.path
-   sudo systemctl status scb-sync.path
-   ```
-
-## Test it [#test-it]
-
-1. As `admin`, follow the service journal in one SSH session:
-
-   ```bash
-   sudo journalctl -f -u scb-sync.service
-   ```
-
-2. In a second session, touch the backup file to simulate a
-   change. `touch` updates the mtime, which is enough to fire
-   `PathChanged`:
-
-   ```bash test:skip
-   sudo -u lnd touch /data/lnd/data/chain/bitcoin/mainnet/channel.backup
-   ```
-
-3. In the first session you should see
-   `Started Sync LND channel.backup to offsite host`, the scp
-   lines, and a clean exit.
-
-4. On the remote host, list the target directory. You should see
-   the timestamped file plus `channel.backup.latest`:
-
-   ```bash test:skip
-   ls -la ~/raspibolt-scb/
-   ```
-
-5. Keep the first session running for the first real channel
-   open or close. When LND updates the SCB for real, you should
-   see a fresh sync event land the same way.
-
-<Callout type="info" title="Rotate old copies">
-  Every channel state change produces a new file. Over years that
-  adds up, not a lot of bytes (the SCB is typically well under
-  100 KB), but a lot of entries. A cron job on the remote host that
-  keeps the last 100 timestamped copies plus `channel.backup.latest`
-  is plenty.
-</Callout>
-
-## Restore flow [#restore-flow]
-
-You only ever run through this when the Pi is toast. The high
-level is: fresh Pi, same 24-word seed, latest SCB, pray.
-
-1. Build a new Pi following the earlier sections. Get to the
-   point where LND is installed, `lnd.conf` is in place, and the
-   service is enabled, but **do not** run `lncli create` yet.
-
-2. Pull `channel.backup.latest` from your remote host onto the
-   new Pi:
-
-   ```bash test:skip
-   sudo -u lnd scp backup@10.0.0.50:/home/backup/raspibolt-scb/channel.backup.latest /tmp/channel.backup
-   ```
-
-3. Start LND in the foreground as the `lnd` user:
-
-   ```bash test:skip
-   sudo su - lnd
-   lnd
-   ```
-
-4. In a second session, create the wallet from the existing seed
-   **with** the SCB attached. The `--recovery_window` tells LND
-   how many derivation steps to scan for on-chain activity,
-   10000 is plenty for a home node. The `--multi_file` flag
-   tells `lncli create` to also accept an SCB:
-
-   ```bash test:skip
-   sudo su - lnd
-   lncli create
-   ```
-
-   Answer `y` to the "existing cipher seed" prompt and paste the
-   24 words. When prompted for an SCB, point at `/tmp/channel.backup`.
-
-   (Alternatively, create the wallet first and then run
-   `lncli restorechanbackup --multi_file /tmp/channel.backup`.
-   Same end result.)
-
-5. Watch the log. LND will reach out to each peer, ask them to
-   force-close at the latest state they know about, and wait.
-   The on-chain commit transactions take the usual time to
-   confirm; expect funds to land in your on-chain wallet over the
-   following hours or days, not minutes.
-
-6. Once all channels have settled, you can reopen new channels
-   against the restored on-chain balance, you're back in
-   business.
-
-<Callout type="warn" title="A stale SCB can cost you sats">
-  If the SCB you restore from is older than what your peers
-  actually have, LND will ask for a close at an outdated state.
-  Well-behaved peers will still close at the latest state they
-  know about (to their own benefit), and the amount you get back
-  is whatever the **peer** says you should, not whatever you
-  thought the balance was.
-
-  The sync above is designed to keep the SCB fresh to within
-  seconds. If you ever see a gap of days between the last sync and
-  "now", something broke, and you need to know about it. A small
-  cron job on the remote host that alerts on stale files is a good
-  idea.
-</Callout>
-
-## Close channels gracefully when you can [#close-channels-gracefully-when-you-can]
-
-Best-case recovery is the one you don't need: close your channels
-on your own terms **before** decommissioning a node. A cooperative
-close settles at the latest state with both peers agreeing,
-doesn't trigger commit-delay timeouts, and pays lower on-chain
-fees. Planning to retire the Pi or move to new hardware?
-
-```bash test:skip
-lncli listchannels
-lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
-```
-
-Close them one by one before you touch anything else.
-
-**Main takeaway:** the seed is half of recovery, the SCB is the
-other half, and the SCB is only useful if it lives somewhere the
-Pi's SSD can't take with it. Set up the sync, test it, and keep
-an eye on the freshness.
-
-
-# Overview (/docs/lightning)
-
-
-
-So Bitcoin is running. Why bolt a second network on top of it?
-
-Because Bitcoin's base layer is deliberately slow and deliberately
-expensive. Every transaction lands in a block that thousands of
-nodes worldwide will validate and store forever, and that's exactly
-what you want for settling serious money, not for buying a coffee.
-The **Lightning Network** is the second layer that fixes the coffee
-problem: payments settle in milliseconds, cost fractions of a cent,
-and only touch the base chain when a channel opens or closes.
-
-This section turns your Bitcoin node into a Lightning node.
-
-## What you'll do [#what-youll-do]
-
-By the end of this section you'll have:
-
-* **LND** running as a systemd service, connected to bitcoind over
-  RPC + ZMQ, and routing its own peer traffic through Tor.
-* A **24-word seed** written down on paper and locked away, the
-  only rope back to your on-chain funds if the Pi dies.
-* **Ride The Lightning (RTL)** on `https://rtl.raspibolt.local`,
-  reachable from your LAN so you can manage channels in a browser.
-* **Zeus** on your phone, connected to the Pi over a private Tor
-  onion, full node control from wherever you are.
-* An **automated channel backup** that rsyncs your
-  `channel.backup` file to an offsite host every time it changes.
-
-Budget roughly **two to three hours** of hands-on time, most of it
-waiting for `npm install` and your first channel to confirm.
-
-## Assumptions [#assumptions]
-
-* You finished the [Bitcoin](/docs/bitcoin) section and `bitcoind` is
-  **fully synced**, Lightning won't initial-sync its graph against
-  a blockchain that's still catching up.
-* `bitcoind` exposes the RPC port on `127.0.0.1:8332` and the ZMQ
-  streams on ports `28332` and `28333`, exactly as configured in
-  [Bitcoin client](/docs/bitcoin/bitcoin-client).
-* **Tor** is installed and its SOCKS proxy is live on
-  `127.0.0.1:9050` (see [Privacy](/docs/raspberry-pi/privacy)).
-* **Caddy** is running as the reverse proxy for your LAN-only
-  services, installed earlier in the Bitcoin section.
-
-If you want to see where LND plugs into everything else before
-diving in, [Architecture](/docs/architecture) has the full picture.
-
-<Callout type="warn" title="This is where it gets financially real">
-  Up until now, a bad step on the Pi costs you a reinstall. A bad
-  step on Lightning can cost you satoshis. The 24-word seed LND
-  generates is the **only** way to recover on-chain funds, and a
-  stale channel backup can mean peers settle against you. Before you
-  send meaningful amounts to this node, read
-  [Channel backup](/docs/lightning/channel-backup), then actually
-  set the backup up. Don't skip it.
-</Callout>
-
-## Pages in this section [#pages-in-this-section]
-
-1. [Lightning client](/docs/lightning/lightning-client), download,
-   verify, and run LND 0.20.1-beta; create the wallet and seed;
-   set up auto-unlock.
-2. [Web app](/docs/lightning/web-app), install Node.js and RTL
-   0.15.6; point it at LND; expose it through Caddy.
-3. [Mobile app](/docs/lightning/mobile-app), set up a Tor hidden
-   service for LND's REST API and pair the Zeus phone app with it.
-4. [Channel backup](/docs/lightning/channel-backup), watch the
-   `channel.backup` file and ship a copy offsite on every change;
-   walk through the restore flow.
-
-When Lightning is up, keep an eye on it for a few days before
-committing serious sats. Channels that open smoothly don't always
-close smoothly, and you'll want to see a few state updates flow
-through the backup pipeline before trusting it.
-
-
-# Lightning client (/docs/lightning/lightning-client)
-
-
-
-Which Lightning implementation should a first-time node run? You'll
-install **LND** (the Lightning Network Daemon) from
-[Lightning Labs](https://lightning.engineering), the most widely
-used, best-documented, and best-tooled implementation for a node
-operator who wants a web UI and a mobile app to work out of the box.
-Core Lightning and Eclair are excellent too, but LND has the
-ecosystem advantage, and that matters when you're starting out.
-
-This page takes you from zero to a running `lnd` service with a
-24-word seed, an auto-unlocking wallet, and a healthy `getinfo`
-response.
-
-<Callout type="warn" title="Real money from satoshi one">
-  Lightning isn't a testbed. The wallet you create here holds real
-  bitcoin, and every channel open or close is an on-chain transaction
-  that costs real fees. Until you have your 24-word seed **written
-  down on paper** and your `channel.backup` file syncing off-Pi
-  (next page after this one), don't fund the wallet. A lost seed or
-  missing SCB on a dead SSD means the funds are gone, no support desk.
-  Budget about **30 minutes** of hands-on time for this page.
-</Callout>
-
-## Create the system user and data directory [#create-the-system-user-and-data-directory]
-
-LND is a long-running daemon that manages real money. It gets its
-own unprivileged system user and a dedicated data directory on the
-SSD, with the home-directory `~/.lnd` path symlinked to the real
-location. Same pattern you used for `bitcoind`.
-
-1. As user `admin`, create the `lnd` user. Give it group membership
-   in `bitcoin` (so it can read `bitcoin.conf` for auto-RPC) and in
-   `debian-tor` (so it can read Tor's cookie file for the control
-   port):
-
-   ```bash
-   sudo adduser --disabled-password --gecos "" lnd
-   sudo usermod -a -G bitcoin,debian-tor lnd
-   sudo adduser admin lnd
-   ```
-
-   The third command puts `admin` into the `lnd` group so you can
-   run `lncli` later without `sudo`.
-
-2. Create the data directory on the SSD and hand it to `lnd`:
-
-   ```bash
-   sudo mkdir /data/lnd
-   sudo chown -R lnd:lnd /data/lnd
-   ```
-
-3. Open a shell as the `lnd` user and set up the symlinks. LND
-   looks for its data in `~/.lnd` by default; pointing that at
-   `/data/lnd` means every tool and tutorial that assumes the
-   default path still works:
-
-   ```bash
-   sudo su - lnd
-   ln -s /data/lnd /home/lnd/.lnd
-   ln -s /data/bitcoin /home/lnd/.bitcoin
-   ls -la
-   ```
-
-   The two symlinks should show in cyan, not red. Red means a
-   broken link, usually because the target directory doesn't exist
-   yet.
-
-## Download LND [#download-lnd]
-
-LND ships as a statically linked binary tarball. You'll download
-it, verify the SHA256 checksum, verify the GPG signature on the
-manifest, and only then copy the binaries into place.
-
-1. Still as the `lnd` user, grab the release archive, the manifest,
-   and the maintainer's signature:
-
-   ```bash
-   cd /tmp
-   wget https://github.com/lightningnetwork/lnd/releases/download/v0.20.1-beta/lnd-linux-arm64-v0.20.1-beta.tar.gz
-   wget https://github.com/lightningnetwork/lnd/releases/download/v0.20.1-beta/manifest-v0.20.1-beta.txt
-   wget https://github.com/lightningnetwork/lnd/releases/download/v0.20.1-beta/manifest-roasbeef-v0.20.1-beta.sig
-   ```
-
-2. Verify the checksum of the binary against the manifest. The
-   `--ignore-missing` flag lets you check only the file you
-   downloaded, not every platform listed in the manifest:
-
-   ```bash
-   sha256sum --check manifest-v0.20.1-beta.txt --ignore-missing
-   ```
-
-   Expected output:
-
-   ```text
-   lnd-linux-arm64-v0.20.1-beta.tar.gz: OK
-   ```
-
-## Verify the signature [#verify-the-signature]
-
-The checksum proves the download wasn't corrupted in transit. It
-does not prove the manifest itself is authentic, for that you need
-to verify the PGP signature against the maintainer's public key.
-LND releases are signed by Olaoluwa "Roasbeef" Osuntokun.
-
-1. Import the signing key from the LND repo (the
-   `scripts/keys/roasbeef.asc` path is the canonical source):
-
-   ```bash
-   curl https://raw.githubusercontent.com/lightningnetwork/lnd/master/scripts/keys/roasbeef.asc | gpg --import
-   ```
-
-2. Verify the manifest against the signature:
-
-   ```bash
-   gpg --verify manifest-roasbeef-v0.20.1-beta.sig manifest-v0.20.1-beta.txt
-   ```
-
-   Look for a `Good signature from "Olaoluwa Osuntokun"` line. The
-   full fingerprint should read
-   `A5B6 1896 952D 9FDA 83BC 054C DC42 612E 8923 7182`. GPG will
-   also warn that the key isn't certified with a trusted signature.
-   That's expected; you haven't built a web of trust around this
-   key, you've just pinned its fingerprint.
-
-<Callout type="info" title="Why GPG when we already have a checksum?">
-  A corrupt download trips the checksum. A compromised download
-  server serves a real binary with a **matching** checksum and a
-  forged manifest. The signature check is what catches that, the
-  attacker would also need Roasbeef's private key, which they do not
-  have.
-</Callout>
-
-## Install the binaries [#install-the-binaries]
-
-1. Step back out of the `lnd` shell first, installing binaries into
-   `/usr/local/bin` needs `admin`'s `sudo`:
-
-   ```bash
-   exit
-   ```
-
-2. Extract the archive and install both binaries:
-
-   ```bash
-   cd /tmp
-   tar -xvf lnd-linux-arm64-v0.20.1-beta.tar.gz
-   sudo install -m 0755 -o root -g root -t /usr/local/bin lnd-linux-arm64-v0.20.1-beta/*
-   lnd --version
-   ```
-
-   Expected output:
-
-   ```text
-   lnd version 0.20.1-beta commit=v0.20.1-beta
-   ```
-
-## Set the wallet unlock password [#set-the-wallet-unlock-password]
-
-LND's wallet is password-protected and asks for the password on
-every startup. You have two options:
-
-* **Manual unlock** every time the Pi reboots. Most secure at rest:
-  the password lives only in your head, but a power blip at 3 a.m.
-  leaves LND offline until you're awake to type a password.
-* **Auto-unlock** from a file on disk. Trades at-rest encryption
-  for uptime. On a single-user home node behind a firewall this is
-  the right default; an attacker who can read files as `lnd` has
-  already lost you the game.
-
-This guide picks auto-unlock. You can switch later.
-
-1. Become `lnd` again and create the password file, then enter
-   password `[C]` (one you haven't used anywhere else):
-
-   ```bash
-   sudo su - lnd
-   nano /data/lnd/password.txt
-   ```
-
-2. Lock the file down so only `lnd` can read it:
-
-   ```bash
-   chmod 600 /data/lnd/password.txt
-   ```
-
-## Write lnd.conf [#write-lndconf]
-
-LND reads its configuration from `/data/lnd/lnd.conf` (resolved
-via the `~/.lnd` symlink). This file does the heavy lifting,
-chain backend, Tor, channel policy, watchtower client, all of it.
-
-1. Create the config file:
-
-   ```bash
-   nano /data/lnd/lnd.conf
-   ```
-
-2. Paste the following. Replace `YourAlias` with whatever name you
-   want to show up in channel graphs, and pick a hex colour you
-   like:
-
-   ```ini
-   # RaspiBolt: lnd configuration
-   # /data/lnd/lnd.conf
-
-   [Application Options]
-   alias=YourAlias
-   color=#ff9900
-   debuglevel=info
-   maxpendingchannels=5
-   listen=localhost
-
-   # Auto-unlock the wallet from a file on disk.
-   # Comment out to unlock manually with `lncli unlock`.
-   wallet-unlock-password-file=/data/lnd/password.txt
-   wallet-unlock-allow-create=true
-
-   # TLS certificate: auto-renew and don't advertise LAN IPs
-   tlsautorefresh=true
-   tlsdisableautofill=true
-
-   # Channel defaults
-   bitcoin.basefee=1000
-   bitcoin.feerate=1
-   minchansize=100000
-   accept-keysend=true
-   accept-amp=true
-   coop-close-target-confs=24
-
-   # Drop stale invoices to keep the DB tidy
-   gc-canceled-invoices-on-startup=true
-   gc-canceled-invoices-on-the-fly=true
-
-   [bolt]
-   db.bolt.auto-compact=true
-   db.bolt.auto-compact-min-age=168h
-
-   [Bitcoin]
-   bitcoin.active=true
-   bitcoin.mainnet=true
-   bitcoin.node=bitcoind
-
-   [Bitcoind]
-   bitcoind.rpchost=127.0.0.1:8332
-   bitcoind.rpcuser=raspibolt
-   bitcoind.rpcpass=PASSWORD_B_REPLACE_ME
-   bitcoind.zmqpubrawblock=tcp://127.0.0.1:28332
-   bitcoind.zmqpubrawtx=tcp://127.0.0.1:28333
-
-   [tor]
-   tor.active=true
-   tor.v3=true
-   tor.streamisolation=true
-   tor.skip-proxy-for-clearnet-targets=true
-
-   [protocol]
-   protocol.wumbo-channels=true
-   protocol.option-scid-alias=true
-   protocol.simple-taproot-chans=true
-   protocol.rbf-coop-close=true
-
-   [wtclient]
-   wtclient.active=true
-   ```
-
-   Replace `PASSWORD_B_REPLACE_ME` with the `rpcpass` from your
-   `bitcoin.conf` (password `[B]` from the Bitcoin section).
-
-<Callout type="info" title="Stream isolation, and why we skip it for bitcoind">
-  `tor.streamisolation=true` gives every outbound Lightning
-  connection its own Tor circuit, so two peers can't correlate you
-  from the same exit. Good privacy default.
-
-  But `skip-proxy-for-clearnet-targets=true` is also on, which keeps
-  local clearnet connections, like the one to `bitcoind` on
-  `127.0.0.1:8332`, off of Tor entirely. Without that, LND tries to
-  send RPC calls through Tor to a localhost IP, and Tor (rightly)
-  refuses. The combination gives you Tor for everything public and
-  direct sockets for everything local.
-</Callout>
-
-## systemd unit [#systemd-unit]
-
-Running `lnd` by hand once is fine for the initial wallet setup.
-For actual operation you want it under systemd so it starts at
-boot, restarts after crashes, and only comes up after `bitcoind`
-is ready.
-
-1. Back as user `admin`, create the unit file:
-
-   ```bash
-   exit
-   sudo nano /etc/systemd/system/lnd.service
-   ```
-
-2. Paste:
-
-   ```ini
-   # RaspiBolt: systemd unit for LND
-   # /etc/systemd/system/lnd.service
-
-   [Unit]
-   Description=LND Lightning Network Daemon
-   Wants=bitcoind.service
-   After=bitcoind.service
-
-   [Service]
-   ExecStart=/usr/local/bin/lnd
-   ExecStop=/usr/local/bin/lncli stop
-   User=lnd
-   Type=simple
-   Restart=always
-   RestartSec=30
-   TimeoutSec=240
-   LimitNOFILE=128000
-
-   # Hardening
-   PrivateTmp=true
-   ProtectSystem=full
-   NoNewPrivileges=true
-   PrivateDevices=true
-   MemoryDenyWriteExecute=true
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-3. Reload systemd and enable the unit (don't start it yet, you
-   need to create the wallet first):
-
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable lnd
-   ```
-
-## Create the wallet and the seed [#create-the-wallet-and-the-seed]
-
-First start is a two-window affair: LND runs in the foreground in
-one SSH session and waits for you to create the wallet from a
-second session.
-
-1. Still as `admin`, start LND in the foreground:
-
-   ```bash test:skip
-   sudo su - lnd
-   lnd
-   ```
-
-   You'll see it print startup logs and then sit on a line like
-   `Waiting for wallet encryption password. Use 'lncli create' ...`.
-   Leave this window open.
-
-2. Open a **second** SSH session to the Pi. Become the `lnd` user
-   and run `lncli create`:
-
-   ```bash test:skip
-   sudo su - lnd
-   lncli create
-   ```
-
-3. At the prompts:
-   * Enter password `[C]` as the wallet password. Use exactly the
-     same password you wrote into `password.txt`.
-   * When asked about an existing cipher seed, answer `n`, you
-     want a fresh seed.
-   * When asked about a seed passphrase, press Enter to skip it
-     unless you know what you're doing. A passphrase adds a 25th
-     word that you also have to back up; lose it and the 24 words
-     alone will not restore the wallet.
-
-4. LND prints a 24-word cipher seed. &#x2A;*Stop scrolling. Read this
-   part.**
-
-<Callout type="error" title="The 24-word seed is your on-chain wallet">
-  These 24 words are the only rope back to the on-chain funds on
-  this node. If the Pi dies, the SSD dies, or the house burns down,
-  the seed, and **only** the seed, can restore your wallet on a
-  fresh LND.
-
-  * **Write the words down on paper.** Twice. Keep the two copies in
-    two different physical locations.
-  * **Do not** photograph the screen, do not type the words into any
-    text file, do not email them to yourself, do not put them in a
-    password manager unless it's one you trust with your life.
-  * The [RaspiBolt backup card](https://github.com/raspibolt/raspibolt/blob/master/resources/raspibolt-backup-card.pdf)
-    is a nice printable template if you want one.
-  * Anyone with these words can empty every on-chain sat on this
-    node. The seed does **not** restore Lightning channel balances,
-    for that, see [Channel backup](/docs/lightning/channel-backup).
-
-  Seriously. Write it down before you go any further.
-</Callout>
-
-Once the seed is recorded, exit the second session:
-
-```bash
-exit
-exit
-```
-
-Back in the first window where `lnd` is still running, stop it with
-`Ctrl-C`. Then start it again in the foreground to confirm the
-auto-unlock works:
-
-```bash test:skip
-lnd
-```
-
-Look for `Attempting automatic wallet unlock with password` and
-`Opened wallet`. Stop it again with `Ctrl-C` and exit the `lnd`
-user session:
-
-```bash
-exit
-```
-
-## Start LND under systemd [#start-lnd-under-systemd]
-
-1. As `admin`, start the service and follow the log:
-
-   ```bash
-   sudo systemctl start lnd
-   sudo journalctl -f -u lnd
-   ```
-
-   Wait until you see `LNWL: Opened wallet` and then graph-sync
-   progress. Exit the log tail with `Ctrl-C`.
-
-2. Let `admin` use `lncli` without `sudo`. The `admin` user is
-   already in the `lnd` group; the remaining permissions tweak is
-   a symlink and a group-read bit on the macaroon:
-
-   ```bash test:skip
-   ln -s /data/lnd /home/admin/.lnd
-   sudo chmod -R g+X /data/lnd/data/
-   sudo chmod g+r /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon
-   ```
-
-3. Log out of the SSH session and log back in, group membership
-   only takes effect on a fresh shell. Then smoke-test:
-
-   ```bash test:skip
-   lncli getinfo
-   lncli getnetworkinfo
-   ```
-
-   `getinfo` should return an `identity_pubkey`, the current
-   `block_height`, and `synced_to_chain: true` once LND has caught
-   up with the graph. `getnetworkinfo` should show a non-zero
-   number of nodes and channels, proof that LND is talking to the
-   wider Lightning network over Tor.
-
-**Main takeaway:** LND is up, the wallet is unlocked, the 24-word
-seed is on paper, and `lncli` works from `admin`. You have a
-working Lightning node.
-
-## Fund the node and open a channel [#fund-the-node-and-open-a-channel]
-
-1. Generate a native-SegWit address and send a small amount of
-   on-chain sats to it from another wallet:
-
-   ```bash test:skip
-   lncli newaddress p2wkh
-   ```
-
-   Wait for one confirmation, then:
-
-   ```bash test:skip
-   lncli walletbalance
-   ```
-
-2. Pick a well-connected peer from
-   [Amboss](https://amboss.space) or
-   [LightningNetwork+](https://lightningnetwork.plus). A peer URI
-   looks like `pubkey@host:port`. Connect, then open a channel
-   (capacity in sats, explicit fee in sats/vByte from
-   [mempool.space](https://mempool.space)):
-
-   ```bash test:skip
-   lncli connect 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f@34.239.230.56:9735
-   lncli openchannel --sat_per_vbyte 8 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f 200000 0
-   ```
-
-   Three confirmations later the channel is active:
-
-   ```bash test:skip
-   lncli listchannels
-   ```
-
-<Callout type="info" title="Before you open channels in anger">
-  Set up [Channel backup](/docs/lightning/channel-backup) **before**
-  you open your first real channel. The backup is only useful if it
-  exists when you need it, and you need it as soon as the first
-  channel lands.
-</Callout>
-
-## Add watchtowers [#add-watchtowers]
-
-Lightning channels assume both sides are honest. If a peer tries
-to settle an old channel state while your node is offline, they
-walk away with funds that should have been yours. Watchtowers are
-third-party nodes that watch your channels for you and punish
-cheaters, and because the worst a watchtower can do is fail
-silently, you don't have to trust them.
-
-You already enabled `wtclient.active=true` in `lnd.conf`. Add a
-tower or two:
-
-```bash test:skip
-sudo su - lnd
-lncli wtclient add 023bad37e5795654cecc69b43599da8bd5789ac633c098253f60494bde602b60bf@iiu4epqzm6cydqhezueenccjlyzrqeruntlzbx47mlmdgfwgtrll66qd.onion:9911
-lncli wtclient towers
-```
-
-Openoms maintains a
-[list of public altruistic watchtowers](https://github.com/openoms/lightning-node-management/issues/4);
-add two or three more for redundancy.
-
-## Useful lncli commands [#useful-lncli-commands]
-
-A small reference you'll come back to:
-
-```bash test:skip
-# node info and peers
-lncli getinfo
-lncli listpeers
-
-# channels
-lncli pendingchannels
-lncli listchannels
-lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
-lncli closechannel --force <funding_txid> <output_index>
-
-# payments
-lncli decodepayreq <invoice>
-lncli payinvoice <invoice>
-lncli sendpayment --amp --dest=<pubkey> --amt=<sats>
-lncli addinvoice <sats>
-lncli listinvoices
-lncli listpayments
-
-# help
-lncli
-lncli help <command>
-```
-
-Full API reference at
-[api.lightning.community](https://api.lightning.community).
-
-## Upgrading LND [#upgrading-lnd]
-
-LND release notes are non-negotiable reading, some releases ship
-database migrations that are one-way. Before every upgrade:
-
-1. Read the
-   [release notes](https://github.com/lightningnetwork/lnd/releases)
-   end to end.
-2. Stop the service: `sudo systemctl stop lnd`.
-3. Repeat the download, verify, and install steps above with the
-   new version.
-4. Update `0.20.1-beta` in `lib/versions.ts` so the rest of the
-   guide agrees.
-5. Start the service: `sudo systemctl start lnd` and tail the log
-   until you see `synced_to_chain: true`.
-
-
-# Mobile app (/docs/lightning/mobile-app)
-
-
-
-What does a Lightning node on the go look like? For this guide,
-it's [Zeus](https://zeusln.app), an open-source mobile app (iOS
-and Android) that talks directly to your own LND instance. No
-custodian, no cloud relay, no third-party pairing server. Zeus
-reaches your node over a **Tor hidden service**, which means your
-Pi's address stays secret and your home IP stays off Lightning
-Network traffic from your phone.
-
-You'll set up a dedicated onion for LND's REST API, mint a QR
-code containing the onion URL, the port, and the admin macaroon,
-then scan it with Zeus.
-
-## Add a hidden service for LND REST [#add-a-hidden-service-for-lnd-rest]
-
-Tor is already running on your Pi (set up in
-[Privacy](/docs/raspberry-pi/privacy)). Adding a hidden service
-for LND's REST API is three more lines in `torrc`.
-
-1. As user `admin`, open the Tor configuration:
-
-   ```bash
-   sudo nano /etc/tor/torrc
-   ```
-
-2. Scroll to the section marked &#x2A;*"This section is just for
-   location-hidden services"** and add:
-
-   ```text
-   # Hidden service for LND REST (Zeus)
-   HiddenServiceDir /var/lib/tor/hidden_service_lnd_rest/
-   HiddenServiceVersion 3
-   HiddenServicePort 8080 127.0.0.1:8080
-   ```
-
-3. Reload Tor and read the generated onion address:
-
-   ```bash
-   sudo systemctl reload tor
-   sudo cat /var/lib/tor/hidden_service_lnd_rest/hostname
-   ```
-
-   You'll get back a string like `abcdefg...xyz.onion`. Save it in
-   your password manager, this is the only thing that lets Zeus
-   find your node, and by design nothing else on the internet can.
-
-<Callout type="info" title="Why an onion, not a public IP?">
-  A hidden service address is 56 random base32 characters, the
-  internet equivalent of an unlisted phone number. Anyone who
-  doesn't have the string cannot connect, cannot scan for it, and
-  cannot even tell that your Pi exists as a Lightning endpoint.
-  That's a far stronger privacy position than opening port 8080 on
-  your router.
-</Callout>
-
-## Allow LND REST on loopback [#allow-lnd-rest-on-loopback]
-
-LND's REST API already listens on `127.0.0.1:8080` by default;
-the hidden service above forwards the onion's port 8080 to that
-loopback socket, so nothing new needs to open on the firewall.
-
-Confirm the port is live:
-
-```bash
-sudo ss -tulpn | grep 8080
-```
-
-You should see `lnd` listening on `127.0.0.1:8080`. If not, your
-`lnd.conf` overrides the default, check for a
-`restlisten` line and remove it or point it at `127.0.0.1:8080`.
-
-## Build the Zeus connect QR [#build-the-zeus-connect-qr]
-
-Zeus has a built-in QR scanner that reads a JSON payload
-containing the onion URL, the port, and the admin macaroon as hex.
-You'll paste that JSON into a QR code on the Pi, maximise the
-terminal window, and scan it with the phone.
-
-1. Install `qrencode` for the QR render, and `xxd` for the macaroon
-   hex/base64 conversion below. On Debian 13, `xxd` is its own
-   package and isn't pulled in by default:
-
-   ```bash
-   sudo apt install -y qrencode jq xxd
-   ```
-
-2. Grab the admin macaroon as uppercase hex:
-
-   ```bash
-   MACAROON_HEX=$(sudo xxd -ps -u -c 1000 /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon)
-   ```
-
-3. Grab the onion hostname:
-
-   ```bash
-   ONION=$(sudo cat /var/lib/tor/hidden_service_lnd_rest/hostname)
-   ```
-
-4. Build the Zeus config URL and render it as a QR code in the
-   terminal. The `lndconnect://` scheme is what Zeus expects:
-
-   ```bash
-   URL="lndconnect://${ONION}:8080?macaroon=$(echo -n "$MACAROON_HEX" | xxd -r -p | base64 | tr '+/' '-_' | tr -d '=')"
-   qrencode -t ANSIUTF8 -m 2 "$URL"
-   ```
-
-   Maximise your terminal window and shrink the font with
-   `Ctrl`-`-` until the whole QR fits on screen.
-
-<Callout type="warn" title="The QR code contains the admin macaroon">
-  Anyone who can photograph this screen has full control of your
-  Lightning node. Don't screenshot it. Don't paste it into a chat.
-  Close the terminal as soon as Zeus has paired.
-</Callout>
-
-## Pair Zeus [#pair-zeus]
-
-1. Install Zeus on your phone.
-   [zeusln.app](https://zeusln.app) has the direct links, Apple
-   App Store, Google Play, F-Droid, or a direct APK download if
-   you prefer to sideload.
-
-2. On the phone, make sure you have a Tor pathway. Zeus can
-   either:
-   * Use **Orbot** (Android) or **Onion Browser** (iOS) as an
-     external Tor proxy, the traditional setup, and the one this
-     guide assumes.
-   * Use its **built-in Tor daemon** (Android only, toggle in
-     Zeus settings), convenient, but note that channel ops will
-     fail if the app is backgrounded aggressively by Android's
-     battery optimiser.
-
-3. Open Zeus, tap **Get Started**, then **Connect a node**.
-
-4. Tap the &#x2A;*+** at the top right, give the node a nickname
-   (`RaspiBolt` works), choose **LND** as the interface and
-   **REST** as the connection type, then tap **Scan lndconnect
-   config**.
-
-5. Scan the QR code from the Pi. Zeus fills in the onion URL,
-   port, and macaroon automatically.
-
-6. Tap **Save node config**. First connection takes a while,
-   Zeus has to build a Tor circuit to your hidden service, so
-   give it a minute.
-
-7. Set a Zeus PIN or password under
-   **Settings → Security**. Someone with your unlocked phone has
-   full control of your node.
-
-## Stream isolation caveat [#stream-isolation-caveat]
-
-You set `tor.streamisolation=true` in `lnd.conf`, this means
-every outbound Lightning channel uses its own Tor circuit, and
-peers cannot correlate you across channels. That setting only
-affects LND's **outbound** connections to Lightning peers. It
-does not affect incoming hidden-service traffic from Zeus, which
-always arrives on the hidden-service circuit regardless.
-
-In other words: Zeus over Tor works exactly the same with or
-without stream isolation enabled. The privacy win of stream
-isolation is elsewhere.
-
-## Troubleshooting [#troubleshooting]
-
-### Zeus hangs on "Connecting..." [#zeus-hangs-on-connecting]
-
-* Tor on the Pi isn't running: `sudo systemctl status tor`.
-* Orbot on the phone isn't running, or the phone doesn't have
-  internet connectivity.
-* LND REST isn't on `127.0.0.1:8080`: `sudo ss -tulpn | grep 8080`.
-* The onion hostname in the QR doesn't match
-  `/var/lib/tor/hidden_service_lnd_rest/hostname`, regenerate the
-  QR.
-
-### "Unable to connect to LND" [#unable-to-connect-to-lnd]
-
-* Macaroon is malformed. Regenerate the QR with the exact
-  commands above; the base64url encoding matters.
-* LND is locked (password-file auto-unlock didn't trigger).
-  Check `sudo systemctl status lnd` and look for
-  `Opened wallet`.
-
-### Payments fail with "no route" [#payments-fail-with-no-route]
-
-* This is a node liquidity problem, not a Zeus problem. Check
-  channel balances in RTL and rebalance if needed.
-
-**Main takeaway:** you have full, private control of your
-Lightning node from your phone, payments, channel management,
-invoicing, with zero third-party infrastructure between you and
-your own Pi.
-
-## Remove Zeus access later [#remove-zeus-access-later]
-
-If you ever want to pull the plug on Zeus pairing, phone lost,
-switching apps, retiring the node, comment out the three hidden
-service lines in `/etc/tor/torrc`:
-
-```text
-#HiddenServiceDir /var/lib/tor/hidden_service_lnd_rest/
-#HiddenServiceVersion 3
-#HiddenServicePort 8080 127.0.0.1:8080
-```
-
-Reload Tor:
-
-```bash
-sudo systemctl reload tor
-```
-
-The onion address goes dark. Zeus immediately loses its connection.
-
-
-# Web app (/docs/lightning/web-app)
-
-
-
-What does a Lightning node look like once you step away from the
-command line? For this guide, it looks like
-[Ride The Lightning](https://github.com/Ride-The-Lightning/RTL)
-(RTL), a well-maintained open-source web dashboard for LND that
-covers channels, on-chain, routing, and fees in one place. No
-phone-home telemetry, no account, no upstream service; RTL runs on
-your Pi and talks to LND over the loopback interface.
-
-You'll install Node.js 22, clone RTL 0.15.6 as its own
-unprivileged user, point it at LND's macaroon and TLS certificate,
-and expose it behind Caddy at `https://rtl.raspibolt.local` on your
-LAN.
-
-## Install Node.js 22 [#install-nodejs-22]
-
-RTL is a Node.js application and needs a recent LTS runtime. The
-NodeSource repository gives you upstream Node without waiting for
-Debian backports.
-
-1. As user `admin`, add the NodeSource GPG key and apt source:
-
-   ```bash
-   sudo apt update
-   sudo apt install -y ca-certificates curl gnupg
-   sudo mkdir -p /etc/apt/keyrings
-   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-   echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
-     | sudo tee /etc/apt/sources.list.d/nodesource.list
-   ```
-
-2. Install Node and verify:
-
-   ```bash
-   sudo apt update
-   sudo apt install -y nodejs
-   node --version
-   npm --version
-   ```
-
-   Expected output, a `v22.x` line from `node`, and a `10.x` or
-   newer line from `npm`:
-
-   ```text
-   v22.22.2
-   10.9.7
-   ```
-
-<Callout type="info" title="If you already installed Node for the Bitcoin Explorer">
-  BTC RPC Explorer uses the same NodeSource setup. If Node 22 is
-  already present, skip this whole section.
-</Callout>
-
-## Create the rtl user [#create-the-rtl-user]
-
-RTL should not run as the `lnd` user, it's a web app with an
-exposed HTTP port, and a compromise there should not hand an
-attacker LND's admin macaroon. A dedicated `rtl` user keeps the
-blast radius small.
-
-1. Create the user and copy in a read-only copy of LND's admin
-   macaroon. RTL only needs to **read** the macaroon; the copy is
-   what keeps `rtl` out of `/data/lnd`:
-
-   ```bash
-   sudo adduser --disabled-password --gecos "" rtl
-   sudo mkdir -p /home/rtl/lnd
-   sudo cp /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon /home/rtl/lnd/admin.macaroon
-   sudo cp /data/lnd/tls.cert /home/rtl/lnd/tls.cert
-   sudo chown -R rtl:rtl /home/rtl/lnd
-   sudo chmod 600 /home/rtl/lnd/admin.macaroon
-   ```
-
-<Callout type="warn" title="The admin macaroon is the keys to the castle">
-  Anyone with `admin.macaroon` and network reach to LND's gRPC port
-  can open channels, close channels, and send payments. It is not
-  the seed, but it can drain active channels. Keep the file locked
-  down and do not commit it to any repository.
-</Callout>
-
-## Install RTL [#install-rtl]
-
-1. Become the `rtl` user, clone the repo, and check out the pinned
-   release tag:
-
-   ```bash
-   sudo su - rtl
-   git clone https://github.com/Ride-The-Lightning/RTL.git
-   cd RTL
-   git checkout v0.15.6
-   ```
-
-2. Verify the tag signature. RTL tags are signed by Suheb; fetch
-   the key and verify:
-
-   ```bash
-   curl https://keybase.io/suheb/pgp_keys.asc | gpg --import
-   git verify-tag v0.15.6
-   ```
-
-   Look for `Good signature from "saubyk"`. The primary key
-   fingerprint is `3E9B D443 6C28 8039 CA82 7A92 00C9 E2BC 2E45 666F`.
-
-3. Install production dependencies. This pulls a few hundred
-   packages and can take ten minutes or more, the process
-   occasionally appears frozen on a single package, it's fine:
-
-   ```bash
-   npm install --omit=dev --legacy-peer-deps
-   ```
-
-   Success looks like `added NNN packages ... found 0 vulnerabilities`.
-
-## Configure RTL [#configure-rtl]
-
-RTL ships a sample config; you copy it, edit a handful of fields,
-and you're done.
-
-1. As user `rtl`, still in `/home/rtl/RTL`:
-
-   ```bash
-   cp Sample-RTL-Config.json RTL-Config.json
-   nano RTL-Config.json
-   ```
-
-2. Change these four values. `multiPass` is the password you'll
-   use to log into the RTL UI, make it a new one, password `[E]`,
-   not reused from anywhere else:
-
-   ```json
-   "multiPass": "PASSWORD_E",
-   "macaroonPath": "/home/rtl/lnd",
-   "swapMacaroonPath": "/home/rtl/lnd",
-   "boltzMacaroonPath": "/home/rtl/lnd"
-   ```
-
-3. Further down in the `nodes` → `settings` block, point RTL at
-   LND on loopback. Leave the URLs as-is if the sample already
-   uses `127.0.0.1`; change `localhost` to `127.0.0.1` if you see
-   it, Node 18+ resolves `localhost` via IPv6 first, which LND
-   doesn't listen on:
-
-   ```json
-   "lnServerUrl": "https://127.0.0.1:8080",
-   "swapServerUrl": "https://127.0.0.1:8081",
-   "boltzServerUrl": "https://127.0.0.1:9003"
-   ```
-
-   Also set `fiatConversion` to `true` if you want USD/EUR totals
-   in the UI, and leave `Authentication → logoutRedirectLink`
-   alone.
-
-4. Save, exit, and leave the `rtl` user session:
-
-   ```bash
-   exit
-   ```
-
-<Callout type="info" title="Multi-node support">
-  RTL can manage multiple LND, Core Lightning, or Eclair nodes from
-  one UI. This guide sticks to a single LND node for simplicity,
-  when you're ready, the
-  [RTL docs](https://github.com/Ride-The-Lightning/RTL#readme)
-  walk through adding more in the same `RTL-Config.json`.
-</Callout>
-
-## systemd unit [#systemd-unit]
-
-1. As `admin`, create the unit file:
-
-   ```bash
-   sudo nano /etc/systemd/system/rtl.service
-   ```
-
-2. Paste:
-
-   ```ini
-   # RaspiBolt: systemd unit for Ride The Lightning
-   # /etc/systemd/system/rtl.service
-
-   [Unit]
-   Description=Ride The Lightning
-   Wants=lnd.service
-   After=lnd.service
-
-   [Service]
-   WorkingDirectory=/home/rtl/RTL
-   ExecStart=/usr/bin/node rtl
-   User=rtl
-   Restart=always
-   RestartSec=30
-
-   # Hardening
-   PrivateTmp=true
-   ProtectSystem=full
-   NoNewPrivileges=true
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-3. Enable and start:
-
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable rtl
-   sudo systemctl start rtl
-   sudo journalctl -f -u rtl
-   ```
-
-   The log should end with
-   `Server is up and running, please open the UI at http://localhost:3000`.
-   Exit the tail with `Ctrl-C`.
-
-## Expose RTL through Caddy [#expose-rtl-through-caddy]
-
-RTL listens on `127.0.0.1:3000`, plain HTTP, bound to loopback.
-You'll front it with **Caddy** (already installed in the Bitcoin
-section) so you can reach it over HTTPS from anywhere on your LAN.
-Caddy's internal CA issues a self-signed cert on the fly, which
-your browser will warn about exactly once when you trust the root.
-
-1. Open Caddy's site config:
-
-   ```bash
-   sudo nano /etc/caddy/Caddyfile
-   ```
-
-2. Add a site block for RTL. The `tls internal` line tells Caddy
-   to mint a cert from its own CA rather than trying Let's Encrypt
-   (which won't work for a `.local` hostname anyway):
-
-   ```text
-   rtl.raspibolt.local {
-     reverse_proxy localhost:3000
-     tls internal
-   }
-   ```
-
-3. Reload Caddy and open the firewall for HTTPS on the LAN:
-
-   ```bash
-   sudo systemctl reload caddy
-   sudo ufw allow from 192.168.0.0/16 to any port 443 proto tcp comment 'HTTPS LAN only'
-   ```
-
-   Replace `192.168.0.0/16` with whatever your home LAN actually
-   uses. If you want RTL reachable from anywhere on the LAN
-   without LAN-scoping, drop the `from` clause, but think twice.
-
-4. Point your desktop browser at `https://rtl.raspibolt.local`.
-   If your router resolves `.local` mDNS names, this works as-is;
-   if not, either add a DNS entry on your router or hit the Pi's
-   IP directly and trust the cert warning for that hostname.
-
-   Log in with password `[E]`.
-
-<Callout type="info" title="Why self-signed is fine at home">
-  Let's Encrypt needs a public DNS name and an internet-reachable
-  port 80 or a DNS-01 challenge. Your home node has neither, and
-  publishing the RTL dashboard on the open internet is not something
-  this guide recommends. Caddy's internal CA produces a perfectly
-  good TLS cert; the browser warning is a one-time "I trust this
-  host on my LAN" click. If you want a trusted cert for your LAN,
-  use DNS-01 with a real domain you own, but that's a separate
-  bonus guide.
-</Callout>
-
-## Walk around the UI [#walk-around-the-ui]
-
-First-login tour:
-
-* **Home**, headline numbers. On-chain balance, channel balance,
-  payments, invoices, and node ranking at a glance.
-* **Lightning → Channels**, open channels, pending channels, and
-  the button to open a new one. Channel policy (base fee, fee
-  rate, time lock) lives in the per-channel view.
-* **Lightning → Payments**, pay an invoice by pasting it, or
-  generate one to receive. The payments table shows every Lightning
-  payment the node has sent.
-* **Routing**, earnings from forwarded payments, plus a per-peer
-  breakdown. This is where you'll see whether your channel policy
-  is attracting any volume.
-* **On-chain**, deposits, sends, UTXOs, and the sweep tool.
-* **Node Settings → Services → Watchtowers**, the towers you
-  configured with `lncli wtclient add` show up here too.
-
-**Main takeaway:** you now have a proper dashboard on your LAN.
-Everything `lncli` does, RTL does with a mouse, plus graphs.
-
-## Upgrading RTL [#upgrading-rtl]
-
-1. As `admin`, stop the service and become `rtl`:
-
-   ```bash
-   sudo systemctl stop rtl
-   sudo su - rtl
-   cd /home/rtl/RTL
-   ```
-
-2. Fetch, find the latest tag, check it out, verify the signature,
-   reinstall dependencies:
-
-   ```bash
-   git fetch
-   git reset --hard
-   latest=$(git tag | grep -E "v[0-9]+\.[0-9]+\.[0-9]+$" | sort --version-sort | tail -n 1)
-   echo "$latest"
-   git checkout "$latest"
-   git verify-tag "$latest"
-   npm install --omit=dev --legacy-peer-deps
-   exit
-   ```
-
-3. Update `0.15.6` in `lib/versions.ts` to keep this
-   guide honest, then restart:
-
-   ```bash
-   sudo systemctl start rtl
-   sudo journalctl -f -u rtl
-   ```
 
 
 # JAM (JoinMarket UI) (/docs/bonus/bitcoin/Jam)

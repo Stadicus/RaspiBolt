@@ -14,6 +14,8 @@ hood, first-class support for every common hardware wallet, excellent
 coin control, PSBTs, and batching. Sparrow is the right default for
 most people using a RaspiBolt.
 
+<Screenshot src="/images/bitcoin_sparrow.png" alt="Sparrow Wallet main screen showing transactions, balance, and connected Electrs server" caption="Sparrow Wallet connected to a private Electrs server" />
+
 ## Not Sparrow? [#not-sparrow]
 
 If Sparrow doesn't fit your workflow, these are all fine companions

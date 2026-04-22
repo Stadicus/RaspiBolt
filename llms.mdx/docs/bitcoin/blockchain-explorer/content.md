@@ -14,6 +14,8 @@ Bitcoin Core over RPC and to Electrs for address balance queries,
 gives you a clean browser interface for blocks, transactions,
 mempool, and fee estimates, and never phones home.
 
+<Screenshot src="/images/bitcoin_btcrpcexplorer.png" alt="BTC RPC Explorer homepage showing the latest block, mempool summary, and fee estimates" caption="BTC RPC Explorer homepage, reading from your own Bitcoin Core + Electrs" />
+
 ## What you'll do [#what-youll-do]
 
 * Install Node.js 22 LTS from NodeSource.

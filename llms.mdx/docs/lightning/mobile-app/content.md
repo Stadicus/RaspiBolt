@@ -14,6 +14,8 @@ You'll set up a dedicated onion for LND's REST API, mint a QR
 code containing the onion URL, the port, and the admin macaroon,
 then scan it with Zeus.
 
+<Screenshot src="/images/lightning_zeus.png" alt="Zeus mobile wallet showing node balance, recent payments, and channel list" caption="Zeus on iOS, connected to LND via a Tor hidden service" />
+
 ## Add a hidden service for LND REST [#add-a-hidden-service-for-lnd-rest]
 
 Tor is already running on your Pi (set up in
