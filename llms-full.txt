@@ -4835,360 +4835,6 @@ On an 8 GB Pi 5, the default 2 GB zram swap is plenty.
 </Callout>
 
 
-# JAM (JoinMarket UI) (/docs/bonus/bitcoin/Jam)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/Jam.md)
-  while we port it over.
-</Callout>
-
-[JAM](https://github.com/joinmarket-webui/jam) is a web interface for
-JoinMarket that aims to make CoinJoin accessible to non-expert users.
-It ships sensible defaults and a browser-based UI while still
-exposing the advanced knobs experienced JoinMarket users rely on.
-
-
-# UTXOracle (/docs/bonus/bitcoin/UTXOracle)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/UTXOracle.md)
-  while we port it over.
-</Callout>
-
-[UTXOracle](https://utxo.live/oracle) is a Python script by Daniel Hinton
-and Steve Jeffress that derives a close BTC/USD price estimate directly
-from on-chain data, without talking to any exchange or external API.
-It works because a predictable share of transaction outputs land on
-round-dollar amounts, so the blockchain itself carries enough signal
-to reconstruct a price.
-
-
-# Bisq (/docs/bonus/bitcoin/bisq)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/bisq.md)
-  while we port it over.
-</Callout>
-
-[Bisq](https://bisq.network/) is a decentralized bitcoin exchange, a
-desktop application that offers a private, censorship-resistant way
-to swap bitcoin for national currencies and other cryptocurrencies
-over the internet. Pointing Bisq at your own node keeps transaction
-lookups off third-party servers.
-
-
-# BitBoxApp (/docs/bonus/bitcoin/bitboxapp)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/bitboxapp.md)
-  while we port it over.
-</Callout>
-
-The [BitBoxApp](https://shiftcrypto.ch/app/) is the beginner-friendly
-companion app to the BitBox02 hardware wallet from Shift Crypto. By
-configuring it to connect directly to your RaspiBolt instead of
-Shift's servers, you verify your own transactions and avoid leaking
-wallet addresses to a third party.
-
-
-# Samourai Dojo (/docs/bonus/bitcoin/dojo)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/dojo.md)
-  while we port it over.
-</Callout>
-
-[Samourai Dojo](https://code.samourai.io/dojo/samourai-dojo) is the
-backing server for Samourai Wallet. It exposes HD account and BIP47
-balance and transaction data, serves unspent output lists, and
-broadcasts transactions through your own `bitcoind`, removing the
-reliance on Samourai's hosted servers.
-
-
-# Electrum Personal Server (/docs/bonus/bitcoin/electrum-personal-server)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/electrum-personal-server.md)
-  while we port it over.
-</Callout>
-
-[Electrum Personal Server](https://github.com/chris-belcher/electrum-personal-server)
-is an alternative to Electrs and Fulcrum that only indexes the
-addresses in your own wallets rather than the entire chain. It uses
-far less disk space at the cost of advance wallet registration and
-slower lookups for new addresses.
-
-
-# Electrum Wallet Desktop (/docs/bonus/bitcoin/electrum-wallet-desktop)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/electrum-wallet-desktop.md)
-  while we port it over.
-</Callout>
-
-[Electrum Wallet](https://electrum.org) is a well-established,
-feature-rich Bitcoin wallet for power users with broad hardware
-wallet support. Pointing it at your own Electrs or Fulcrum server
-keeps address lookups private and removes the dependency on public
-Electrum servers.
-
-
-# Fulcrum (/docs/bonus/bitcoin/fulcrum)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/fulcrum.md)
-  while we port it over.
-</Callout>
-
-[Fulcrum](https://github.com/cculianu/Fulcrum) is a fast SPV server
-for Bitcoin, Bitcoin Cash, and Litecoin written in C++ by Calin
-Culianu. Independent benchmarks rank it as one of the quickest
-Electrum server implementations available, which makes it a solid
-alternative to Electrs when you want lower query latency.
-
-
-# I2P (/docs/bonus/bitcoin/i2p)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/i2p.md)
-  while we port it over.
-</Callout>
-
-[I2P](https://geti2p.net/en/), the Invisible Internet Protocol, is
-an anonymous, end-to-end encrypted network layer where peers never
-see each other's real IP addresses. The guide installs
-[i2pd](https://i2pd.readthedocs.io/), a C++ I2P daemon, so Bitcoin
-Core can reach peers over I2P in addition to clearnet and Tor.
-
-
-# Bitcoin bonus (/docs/bonus/bitcoin)
-
-
-
-This section covers Bitcoin tooling that goes beyond the core
-RaspiBolt setup. You'll find self-hosted block explorers, desktop
-and CLI wallets, alternative Electrum server implementations,
-privacy layers like JoinMarket and I2P, and a testnet variant of
-the whole stack. Pick the pieces that match how you use your node.
-
-<Callout type="info" title="Content being migrated">
-  The bonus pages are still being rewritten for v4. Each page links to
-  the v3 source while we work through the backlog.
-</Callout>
-
-## What's in this section [#whats-in-this-section]
-
-<Cards>
-  <Card title="Mempool" href="/docs/bonus/bitcoin/mempool">
-    Self-hosted Bitcoin blockchain and mempool visualizer.
-  </Card>
-
-  <Card title="UTXOracle" href="/docs/bonus/bitcoin/UTXOracle">
-    Estimate the BTC/USD price from your own blockchain data.
-  </Card>
-
-  <Card title="Download the white paper" href="/docs/bonus/bitcoin/white-paper">
-    Reconstruct the Bitcoin white paper PDF from on-chain data.
-  </Card>
-
-  <Card title="Bisq" href="/docs/bonus/bitcoin/bisq">
-    Decentralized desktop exchange for non-KYC bitcoin.
-  </Card>
-
-  <Card title="BitBoxApp" href="/docs/bonus/bitcoin/bitboxapp">
-    Beginner-friendly companion app for the BitBox02.
-  </Card>
-
-  <Card title="Electrum Wallet Desktop" href="/docs/bonus/bitcoin/electrum-wallet-desktop">
-    Feature-rich desktop wallet for power users.
-  </Card>
-
-  <Card title="Specter Desktop" href="/docs/bonus/bitcoin/specter-desktop">
-    Bitcoin Core GUI focused on multisig with hardware wallets.
-  </Card>
-
-  <Card title="Sparrow Terminal" href="/docs/bonus/bitcoin/sparrow-terminal">
-    Headless Sparrow for systems without a display.
-  </Card>
-
-  <Card title="Samourai Dojo" href="/docs/bonus/bitcoin/dojo">
-    Personal backend for Samourai Wallet.
-  </Card>
-
-  <Card title="Electrum Personal Server" href="/docs/bonus/bitcoin/electrum-personal-server">
-    Lightweight Electrum server that indexes only your wallets.
-  </Card>
-
-  <Card title="Fulcrum" href="/docs/bonus/bitcoin/fulcrum">
-    Fast Electrum-compatible SPV server, alternative to Electrs.
-  </Card>
-
-  <Card title="JoinMarket" href="/docs/bonus/bitcoin/joinmarket">
-    Decentralized marketplace for CoinJoin transactions.
-  </Card>
-
-  <Card title="JAM (JoinMarket UI)" href="/docs/bonus/bitcoin/Jam">
-    Friendly web interface for JoinMarket.
-  </Card>
-
-  <Card title="I2P" href="/docs/bonus/bitcoin/i2p">
-    Anonymous network layer alongside Tor for Bitcoin Core.
-  </Card>
-
-  <Card title="Safu Ninja" href="/docs/bonus/bitcoin/safu-ninja">
-    DIY steel backup for your seed phrases.
-  </Card>
-
-  <Card title="RaspiBolt on testnet" href="/docs/bonus/bitcoin/testnet">
-    Run the full stack on testnet for safe experimentation.
-  </Card>
-</Cards>
-
-
-# JoinMarket (/docs/bonus/bitcoin/joinmarket)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/joinmarket.md)
-  while we port it over.
-</Callout>
-
-[JoinMarket](https://github.com/JoinMarket-Org/joinmarket-clientserver)
-is a decentralized marketplace for CoinJoin transactions. Running it
-on your node lets you either mix your own coins by paying a small
-fee or become a liquidity maker and earn sats for providing the
-inputs others use to mix.
-
-
-# Mempool (/docs/bonus/bitcoin/mempool)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/mempool.md)
-  while we port it over.
-</Callout>
-
-[Mempool](https://github.com/mempool/mempool) is a self-hosted Bitcoin
-blockchain and mempool visualizer and explorer. Running it on your own
-node lets you look up your onchain transactions and estimate fees
-without leaking that activity to a third-party block explorer.
-
-
-# Safu Ninja (/docs/bonus/bitcoin/safu-ninja)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/safu-ninja.md)
-  while we port it over.
-</Callout>
-
-[Safu Ninja](https://safu.ninja/) is a DIY method for building
-fire- and water-resistant steel backups of your mnemonic seed
-phrases. It uses only off-the-shelf components, which means no
-third-party vendor ever learns you own a hardware wallet or what
-the device is guarding.
-
-
-# Sparrow Terminal (/docs/bonus/bitcoin/sparrow-terminal)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/sparrow-terminal.md)
-  while we port it over.
-</Callout>
-
-Sparrow Terminal is a stripped-down build of [Sparrow Wallet](https://sparrowwallet.com/)
-that runs on systems without a graphical display. It's primarily a
-configuration utility for running Sparrow as a server daemon on your
-node, with the GUI client connecting from another machine on your
-network.
-
-
-# Specter Desktop (/docs/bonus/bitcoin/specter-desktop)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/specter-desktop.md)
-  while we port it over.
-</Callout>
-
-[Specter Desktop](https://specter.solutions/) wraps Bitcoin Core with
-a convenient GUI and is purpose-built around multisignature setups
-using hardware wallets and airgapped devices. It's a strong choice
-when you want self-custody of larger amounts with a second-factor
-signing device.
-
-
-# RaspiBolt on testnet (/docs/bonus/bitcoin/testnet)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/testnet.md)
-  while we port it over.
-</Callout>
-
-Running a testnet RaspiBolt lets you explore Bitcoin and Lightning
-with play-money coins. The guide highlights every configuration
-difference from the mainnet setup so you can build or test tools and
-integrations without the risk of losing real sats.
-
-
-# Download the white paper (/docs/bonus/bitcoin/white-paper)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/white-paper.md)
-  while we port it over.
-</Callout>
-
-The Bitcoin white paper was embedded in the blockchain in April 2013
-inside block 230,009. This guide walks through extracting and
-reassembling the PDF from your own verified blockchain data, a nice
-demonstration that the foundational document of Bitcoin is, quite
-literally, part of Bitcoin itself.
-
-
 # AmbossPing (/docs/bonus/lightning/ambossping)
 
 
@@ -5815,3 +5461,357 @@ force a lengthy resync. With a UPS and
 watches the battery level and triggers a clean shutdown before the
 UPS runs out, turning a brownout into a five-minute nuisance
 instead of hours of downtime.
+
+
+# JAM (JoinMarket UI) (/docs/bonus/bitcoin/Jam)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/Jam.md)
+  while we port it over.
+</Callout>
+
+[JAM](https://github.com/joinmarket-webui/jam) is a web interface for
+JoinMarket that aims to make CoinJoin accessible to non-expert users.
+It ships sensible defaults and a browser-based UI while still
+exposing the advanced knobs experienced JoinMarket users rely on.
+
+
+# UTXOracle (/docs/bonus/bitcoin/UTXOracle)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/UTXOracle.md)
+  while we port it over.
+</Callout>
+
+[UTXOracle](https://utxo.live/oracle) is a Python script by Daniel Hinton
+and Steve Jeffress that derives a close BTC/USD price estimate directly
+from on-chain data, without talking to any exchange or external API.
+It works because a predictable share of transaction outputs land on
+round-dollar amounts, so the blockchain itself carries enough signal
+to reconstruct a price.
+
+
+# Bisq (/docs/bonus/bitcoin/bisq)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/bisq.md)
+  while we port it over.
+</Callout>
+
+[Bisq](https://bisq.network/) is a decentralized bitcoin exchange, a
+desktop application that offers a private, censorship-resistant way
+to swap bitcoin for national currencies and other cryptocurrencies
+over the internet. Pointing Bisq at your own node keeps transaction
+lookups off third-party servers.
+
+
+# BitBoxApp (/docs/bonus/bitcoin/bitboxapp)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/bitboxapp.md)
+  while we port it over.
+</Callout>
+
+The [BitBoxApp](https://shiftcrypto.ch/app/) is the beginner-friendly
+companion app to the BitBox02 hardware wallet from Shift Crypto. By
+configuring it to connect directly to your RaspiBolt instead of
+Shift's servers, you verify your own transactions and avoid leaking
+wallet addresses to a third party.
+
+
+# Samourai Dojo (/docs/bonus/bitcoin/dojo)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/dojo.md)
+  while we port it over.
+</Callout>
+
+[Samourai Dojo](https://code.samourai.io/dojo/samourai-dojo) is the
+backing server for Samourai Wallet. It exposes HD account and BIP47
+balance and transaction data, serves unspent output lists, and
+broadcasts transactions through your own `bitcoind`, removing the
+reliance on Samourai's hosted servers.
+
+
+# Electrum Personal Server (/docs/bonus/bitcoin/electrum-personal-server)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/electrum-personal-server.md)
+  while we port it over.
+</Callout>
+
+[Electrum Personal Server](https://github.com/chris-belcher/electrum-personal-server)
+is an alternative to Electrs and Fulcrum that only indexes the
+addresses in your own wallets rather than the entire chain. It uses
+far less disk space at the cost of advance wallet registration and
+slower lookups for new addresses.
+
+
+# Electrum Wallet Desktop (/docs/bonus/bitcoin/electrum-wallet-desktop)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/electrum-wallet-desktop.md)
+  while we port it over.
+</Callout>
+
+[Electrum Wallet](https://electrum.org) is a well-established,
+feature-rich Bitcoin wallet for power users with broad hardware
+wallet support. Pointing it at your own Electrs or Fulcrum server
+keeps address lookups private and removes the dependency on public
+Electrum servers.
+
+
+# Fulcrum (/docs/bonus/bitcoin/fulcrum)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/fulcrum.md)
+  while we port it over.
+</Callout>
+
+[Fulcrum](https://github.com/cculianu/Fulcrum) is a fast SPV server
+for Bitcoin, Bitcoin Cash, and Litecoin written in C++ by Calin
+Culianu. Independent benchmarks rank it as one of the quickest
+Electrum server implementations available, which makes it a solid
+alternative to Electrs when you want lower query latency.
+
+
+# I2P (/docs/bonus/bitcoin/i2p)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/i2p.md)
+  while we port it over.
+</Callout>
+
+[I2P](https://geti2p.net/en/), the Invisible Internet Protocol, is
+an anonymous, end-to-end encrypted network layer where peers never
+see each other's real IP addresses. The guide installs
+[i2pd](https://i2pd.readthedocs.io/), a C++ I2P daemon, so Bitcoin
+Core can reach peers over I2P in addition to clearnet and Tor.
+
+
+# Bitcoin bonus (/docs/bonus/bitcoin)
+
+
+
+This section covers Bitcoin tooling that goes beyond the core
+RaspiBolt setup. You'll find self-hosted block explorers, desktop
+and CLI wallets, alternative Electrum server implementations,
+privacy layers like JoinMarket and I2P, and a testnet variant of
+the whole stack. Pick the pieces that match how you use your node.
+
+<Callout type="info" title="Content being migrated">
+  The bonus pages are still being rewritten for v4. Each page links to
+  the v3 source while we work through the backlog.
+</Callout>
+
+## What's in this section [#whats-in-this-section]
+
+<Cards>
+  <Card title="Mempool" href="/docs/bonus/bitcoin/mempool">
+    Self-hosted Bitcoin blockchain and mempool visualizer.
+  </Card>
+
+  <Card title="UTXOracle" href="/docs/bonus/bitcoin/UTXOracle">
+    Estimate the BTC/USD price from your own blockchain data.
+  </Card>
+
+  <Card title="Download the white paper" href="/docs/bonus/bitcoin/white-paper">
+    Reconstruct the Bitcoin white paper PDF from on-chain data.
+  </Card>
+
+  <Card title="Bisq" href="/docs/bonus/bitcoin/bisq">
+    Decentralized desktop exchange for non-KYC bitcoin.
+  </Card>
+
+  <Card title="BitBoxApp" href="/docs/bonus/bitcoin/bitboxapp">
+    Beginner-friendly companion app for the BitBox02.
+  </Card>
+
+  <Card title="Electrum Wallet Desktop" href="/docs/bonus/bitcoin/electrum-wallet-desktop">
+    Feature-rich desktop wallet for power users.
+  </Card>
+
+  <Card title="Specter Desktop" href="/docs/bonus/bitcoin/specter-desktop">
+    Bitcoin Core GUI focused on multisig with hardware wallets.
+  </Card>
+
+  <Card title="Sparrow Terminal" href="/docs/bonus/bitcoin/sparrow-terminal">
+    Headless Sparrow for systems without a display.
+  </Card>
+
+  <Card title="Samourai Dojo" href="/docs/bonus/bitcoin/dojo">
+    Personal backend for Samourai Wallet.
+  </Card>
+
+  <Card title="Electrum Personal Server" href="/docs/bonus/bitcoin/electrum-personal-server">
+    Lightweight Electrum server that indexes only your wallets.
+  </Card>
+
+  <Card title="Fulcrum" href="/docs/bonus/bitcoin/fulcrum">
+    Fast Electrum-compatible SPV server, alternative to Electrs.
+  </Card>
+
+  <Card title="JoinMarket" href="/docs/bonus/bitcoin/joinmarket">
+    Decentralized marketplace for CoinJoin transactions.
+  </Card>
+
+  <Card title="JAM (JoinMarket UI)" href="/docs/bonus/bitcoin/Jam">
+    Friendly web interface for JoinMarket.
+  </Card>
+
+  <Card title="I2P" href="/docs/bonus/bitcoin/i2p">
+    Anonymous network layer alongside Tor for Bitcoin Core.
+  </Card>
+
+  <Card title="Safu Ninja" href="/docs/bonus/bitcoin/safu-ninja">
+    DIY steel backup for your seed phrases.
+  </Card>
+
+  <Card title="RaspiBolt on testnet" href="/docs/bonus/bitcoin/testnet">
+    Run the full stack on testnet for safe experimentation.
+  </Card>
+</Cards>
+
+
+# JoinMarket (/docs/bonus/bitcoin/joinmarket)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/joinmarket.md)
+  while we port it over.
+</Callout>
+
+[JoinMarket](https://github.com/JoinMarket-Org/joinmarket-clientserver)
+is a decentralized marketplace for CoinJoin transactions. Running it
+on your node lets you either mix your own coins by paying a small
+fee or become a liquidity maker and earn sats for providing the
+inputs others use to mix.
+
+
+# Mempool (/docs/bonus/bitcoin/mempool)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/mempool.md)
+  while we port it over.
+</Callout>
+
+[Mempool](https://github.com/mempool/mempool) is a self-hosted Bitcoin
+blockchain and mempool visualizer and explorer. Running it on your own
+node lets you look up your onchain transactions and estimate fees
+without leaking that activity to a third-party block explorer.
+
+
+# Safu Ninja (/docs/bonus/bitcoin/safu-ninja)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/safu-ninja.md)
+  while we port it over.
+</Callout>
+
+[Safu Ninja](https://safu.ninja/) is a DIY method for building
+fire- and water-resistant steel backups of your mnemonic seed
+phrases. It uses only off-the-shelf components, which means no
+third-party vendor ever learns you own a hardware wallet or what
+the device is guarding.
+
+
+# Sparrow Terminal (/docs/bonus/bitcoin/sparrow-terminal)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/sparrow-terminal.md)
+  while we port it over.
+</Callout>
+
+Sparrow Terminal is a stripped-down build of [Sparrow Wallet](https://sparrowwallet.com/)
+that runs on systems without a graphical display. It's primarily a
+configuration utility for running Sparrow as a server daemon on your
+node, with the GUI client connecting from another machine on your
+network.
+
+
+# Specter Desktop (/docs/bonus/bitcoin/specter-desktop)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/specter-desktop.md)
+  while we port it over.
+</Callout>
+
+[Specter Desktop](https://specter.solutions/) wraps Bitcoin Core with
+a convenient GUI and is purpose-built around multisignature setups
+using hardware wallets and airgapped devices. It's a strong choice
+when you want self-custody of larger amounts with a second-factor
+signing device.
+
+
+# RaspiBolt on testnet (/docs/bonus/bitcoin/testnet)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/testnet.md)
+  while we port it over.
+</Callout>
+
+Running a testnet RaspiBolt lets you explore Bitcoin and Lightning
+with play-money coins. The guide highlights every configuration
+difference from the mainnet setup so you can build or test tools and
+integrations without the risk of losing real sats.
+
+
+# Download the white paper (/docs/bonus/bitcoin/white-paper)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/white-paper.md)
+  while we port it over.
+</Callout>
+
+The Bitcoin white paper was embedded in the blockchain in April 2013
+inside block 230,009. This guide walks through extracting and
+reassembling the PDF from your own verified blockchain data, a nice
+demonstration that the foundational document of Bitcoin is, quite
+literally, part of Bitcoin itself.
