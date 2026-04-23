@@ -5,4 +5,4 @@
 :HL["/RaspiBolt/images/logo-light.png","image"]
 :HL["/RaspiBolt/images/logo-dark.png","image"]
 :HL["/RaspiBolt/images/lightning_zeus.png","image"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"docs","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"lightning/mobile-app","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"kOu4dbxIdb4p3IYtp2PUI"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"docs","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"oc","key":"lightning/mobile-app","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"Bmygk6zIW1nDhnGs_i7Mw"}
