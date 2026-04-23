@@ -206,6 +206,12 @@ ports exposed for LND later on, and RPC locked to localhost.
    # Electrs gets a whitelisted block-download fast path
    whitelist=download@127.0.0.1
 
+   # OP_RETURN relay limit. Bitcoin Core 30.0 raised the default from 83 to
+   # 100000 bytes. Setting it explicitly keeps this node conservative: it
+   # will not relay or mine transactions whose OP_RETURN data exceeds 83 bytes.
+   # Raise or remove this line if you want to relay inscription-heavy traffic.
+   datacarriersize=83
+
    # Peer connections
    maxconnections=40
    maxuploadtarget=5000
