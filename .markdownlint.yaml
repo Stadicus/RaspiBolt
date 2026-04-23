@@ -29,6 +29,9 @@ MD033:
     - TypeTable
     - Accordion
     - Accordions
+    - Contributors
+    - Screenshot
+    - VideoEmbed
 
 # First line doesn't need to be h1 (YAML frontmatter provides title)
 MD041: false
