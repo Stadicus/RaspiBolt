@@ -26,7 +26,7 @@
   - [Bonus](/docs/bonus): Optional guides for extra tooling, alternative software, and niche setups that complement the main RaspiBolt.
   - Bitcoin bonus
     - [Bitcoin bonus](/docs/bonus/bitcoin): Additional Bitcoin software, explorers, wallets, alternative Electrum servers, privacy tools, and testnet.
-    - [Mempool](/docs/bonus/bitcoin/mempool): Self-hosted Bitcoin blockchain and mempool visualizer for private transaction lookups and fee estimation.
+    - [Mempool Explorer](/docs/bonus/bitcoin/mempool): Self-hosted Bitcoin mempool visualizer and block explorer. Build Mempool v3 from source, MariaDB backend, Caddy HTTPS on port 4080.
     - [UTXOracle](/docs/bonus/bitcoin/UTXOracle): Python script that estimates the BTC/USD price from your own blockchain data, no external exchange required.
     - [Download the white paper](/docs/bonus/bitcoin/white-paper): Reconstruct the Bitcoin white paper PDF directly from the blockchain data on your own node.
     - [Bisq](/docs/bonus/bitcoin/bisq): Decentralized desktop exchange for privately buying and selling non-KYC bitcoin.

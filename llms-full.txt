@@ -727,1458 +727,6 @@ gnarly problem that isn't here, an issue or pull request is the way
 to add it, future-you (and everyone else) will thank you.
 
 
-# Bitcoin client (/docs/bitcoin/bitcoin-client)
-
-
-
-[Bitcoin Core](https://bitcoincore.org) is the reference client for
-the Bitcoin network. It downloads the entire blockchain, validates
-every transaction since the genesis block, and from then on holds
-the authoritative answer to "is this UTXO real?", no third party
-asked, no trust extended. Everything else in this guide, Electrs,
-Lightning, the block explorer, is a consumer of this node.
-
-## What to expect [#what-to-expect]
-
-Installing `bitcoind` is a short job. Syncing it is not. On a Pi 5
-with a good USB 3 SSD (or NVMe via the M.2 HAT+), the initial block
-download takes roughly **two to five days**. You don't have to sit
-with it, start it, check in once a day, come back when
-`verificationprogress` is a hair below 1.
-
-<Callout type="info" title="Pi 4 owners">
-  A Pi 4 with 8 GB RAM still gets there, just slower, plan for five to
-  seven days for the initial sync and keep the `dbcache` a little lower
-  (see below). Anything less than 8 GB of RAM will struggle once LND
-  and Electrs join the party; upgrade if you can.
-</Callout>
-
-## Create the bitcoin user [#create-the-bitcoin-user]
-
-`bitcoind` runs as its own system user. No shell password, no
-sudo, if something ever does manage to break out of the daemon, it
-lands in a sandbox, not on your `admin` account.
-
-1. Create the user and add `admin` to its group so you can read its
-   files without juggling `sudo`:
-
-   ```bash
-   sudo adduser --gecos "" --disabled-password bitcoin
-   sudo adduser admin bitcoin
-   ```
-
-2. Put the `bitcoin` user into the `debian-tor` group so it can read
-   Tor's cookie file and use the control port you set up earlier:
-
-   ```bash
-   sudo adduser bitcoin debian-tor
-   ```
-
-## Create the data directory [#create-the-data-directory]
-
-Bitcoin Core defaults to `~/.bitcoin` inside the user's home. On
-this node the chain lives under `/data/bitcoin` on the SSD, a
-separate mount you carved out in [System configuration](/docs/raspberry-pi/system-configuration#data-directory).
-A symlink from `/home/bitcoin/.bitcoin` to that location keeps the
-defaults happy while the actual data sits on the fast disk.
-
-```bash
-sudo mkdir /data/bitcoin
-sudo chown bitcoin:bitcoin /data/bitcoin
-sudo ln -s /data/bitcoin /home/bitcoin/.bitcoin
-sudo chown -h bitcoin:bitcoin /home/bitcoin/.bitcoin
-```
-
-## Download and verify Bitcoin Core [#download-and-verify-bitcoin-core]
-
-Never run a Bitcoin binary you haven't verified. The point of a
-full node is to trust your own software, which means the software
-has to be what the developers actually signed.
-
-1. As `admin`, drop into `/tmp` (cleared on every reboot) and pull
-   the binary, the checksum file, and the signature file:
-
-   ```bash
-   cd /tmp
-   wget https://bitcoincore.org/bin/bitcoin-core-30.2/bitcoin-30.2-aarch64-linux-gnu.tar.gz
-   wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS
-   wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS.asc
-   ```
-
-2. Check the checksum of the archive against the reference. The
-   "improperly formatted" warning is about unrelated platforms in
-   the same file, ignore it:
-
-   ```bash
-   sha256sum --ignore-missing --check SHA256SUMS
-   ```
-
-   You want to see:
-
-   ```text
-   bitcoin-30.2-aarch64-linux-gnu.tar.gz: OK
-   ```
-
-3. Bitcoin Core releases are signed by multiple maintainers through
-   the [guix.sigs repository](https://github.com/bitcoin-core/guix.sigs).
-   Import all current signing keys in one sweep:
-
-   ```bash
-   curl -s "https://api.github.com/repositories/355107265/contents/builder-keys" \
-     | grep download_url \
-     | grep -oE "https://[a-zA-Z0-9./-]+" \
-     | while read url; do curl -s "$url" | gpg --import; done
-   ```
-
-4. Verify the checksum file's signatures. You want several `Good
-   signature` lines, one signature alone is not enough:
-
-   ```bash
-   gpg --verify SHA256SUMS.asc
-   ```
-
-   Skim the output for multiple lines like:
-
-   ```text
-   gpg: Good signature from "..."
-   Primary key fingerprint: ...
-   ```
-
-<Callout type="warn" title="Don't skip the signature check">
-  A matching SHA256 only proves the file matches the checksum file.
-  The GPG step is what proves the checksum file itself came from the
-  Bitcoin Core maintainers and not someone who also controls the
-  download server. Verify both, or verify neither.
-</Callout>
-
-## Install the binaries [#install-the-binaries]
-
-If checksum and signature are happy, extract and install:
-
-```bash
-tar -xvf bitcoin-30.2-aarch64-linux-gnu.tar.gz
-sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-30.2/bin/*
-bitcoin-cli --version
-```
-
-Expected output:
-
-```text
-Bitcoin Core RPC client version v30.2.0
-Copyright (C) 2009-2026 The Bitcoin Core developers
-```
-
-## Generate RPC credentials [#generate-rpc-credentials]
-
-Other programs (Electrs, LND, the block explorer) talk to `bitcoind`
-through its RPC interface. Bitcoin Core doesn't store the password
-in plaintext, it stores a salted hash. A short Python script ships
-with the source tree to generate the config line.
-
-1. As the `bitcoin` user, fetch the helper script:
-
-   ```bash
-   sudo su - bitcoin
-   cd .bitcoin
-   wget https://raw.githubusercontent.com/bitcoin/bitcoin/master/share/rpcauth/rpcauth.py
-   ```
-
-2. Run it with the username `raspibolt` and your &#x2A;*password \[B]**
-   from [Preparations](/docs/raspberry-pi/preparations#passwords).
-   Put a leading space in front of the command so bash keeps it out
-   of your shell history, passwords don't belong in `~/.bash_history`:
-
-   ```bash
-    python3 rpcauth.py raspibolt YourPasswordB
-   ```
-
-   The script prints a line starting with `rpcauth=raspibolt:...$...`.
-   Copy it, you'll paste it into the config file next.
-
-## Write bitcoin.conf [#write-bitcoinconf]
-
-This config is tuned for a Pi 5 with 8 GB of RAM: a generous `dbcache`
-to accelerate the initial sync, outbound traffic through Tor, ZMQ
-ports exposed for LND later on, and RPC locked to localhost.
-
-1. Still as the `bitcoin` user, open the config:
-
-   ```bash
-   nano /home/bitcoin/.bitcoin/bitcoin.conf
-   ```
-
-2. Paste the following. Replace the `rpcauth=` line with the one
-   `rpcauth.py` just printed for you:
-
-   ```ini
-   # RaspiBolt: bitcoind configuration
-   # /home/bitcoin/.bitcoin/bitcoin.conf
-
-   # Daemon
-   server=1
-   txindex=1
-
-   # Network, listen on IPv4 localhost, reach peers over Tor
-   listen=1
-   listenonion=1
-   bind=127.0.0.1
-   proxy=127.0.0.1:9050
-
-   # RPC, paste your own line from rpcauth.py
-   rpcauth=<replace-me>
-   rpccookieperms=group
-
-   # ZMQ for LND and other consumers
-   zmqpubrawblock=tcp://127.0.0.1:28332
-   zmqpubrawtx=tcp://127.0.0.1:28333
-
-   # Electrs gets a whitelisted block-download fast path
-   whitelist=download@127.0.0.1
-
-   # Peer connections
-   maxconnections=40
-   maxuploadtarget=5000
-
-   # Memory pool
-   maxmempool=300
-
-   # Initial block download tuning (Pi 5, 8 GB RAM)
-   # Reduce dbcache to ~450 after the chain is synced.
-   dbcache=2000
-   blocksonly=1
-   ```
-
-3. Lock the file down so only `bitcoin` and its group can read it,
-   the `rpcauth` hash isn't exactly a secret, but it's a credential:
-
-   ```bash
-   chmod 640 /home/bitcoin/.bitcoin/bitcoin.conf
-   ```
-
-<Callout type="info" title="Why blocksonly=1 during IBD?">
-  `blocksonly=1` tells `bitcoind` to skip relaying loose transactions
-  during the initial sync. It cuts bandwidth use significantly while
-  the node is chewing through history. You'll turn it off after the
-  sync completes, alongside the `dbcache` reduction, see the bottom
-  of this page.
-</Callout>
-
-## Systemd unit [#systemd-unit]
-
-The node needs to start on boot and stay running, that's what
-systemd is for. This unit runs `bitcoind` as the `bitcoin` user,
-locks it into a few standard hardening primitives, and restarts on
-failure with a sensible backoff.
-
-1. Drop back to `admin`:
-
-   ```bash
-   exit
-   ```
-
-2. Create the unit file:
-
-   ```bash
-   sudo nano /etc/systemd/system/bitcoind.service
-   ```
-
-3. Paste:
-
-   ```ini
-   # RaspiBolt: systemd unit for bitcoind
-   # /etc/systemd/system/bitcoind.service
-
-   [Unit]
-   Description=Bitcoin daemon
-   After=network-online.target tor.service
-   Wants=network-online.target
-
-   [Service]
-   ExecStart=/usr/local/bin/bitcoind -daemon \
-                                     -pid=/run/bitcoind/bitcoind.pid \
-                                     -conf=/home/bitcoin/.bitcoin/bitcoin.conf \
-                                     -datadir=/home/bitcoin/.bitcoin \
-                                     -startupnotify="systemd-notify --ready"
-
-   Type=forking
-   PIDFile=/run/bitcoind/bitcoind.pid
-   Restart=on-failure
-   TimeoutSec=300
-   RestartSec=30
-
-   User=bitcoin
-   UMask=0027
-
-   RuntimeDirectory=bitcoind
-   RuntimeDirectoryMode=0710
-
-   # Hardening
-   PrivateTmp=true
-   ProtectSystem=full
-   NoNewPrivileges=true
-   PrivateDevices=true
-   MemoryDenyWriteExecute=true
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-4. Enable it (so it runs on boot) and start it now:
-
-   ```bash
-   sudo systemctl enable bitcoind.service
-   sudo systemctl start bitcoind.service
-   ```
-
-5. Also symlink the data directory into `admin`'s home so
-   `bitcoin-cli` works without a `-datadir` flag:
-
-   ```bash
-   ln -s /data/bitcoin /home/admin/.bitcoin
-   ```
-
-## Verify it's syncing [#verify-its-syncing]
-
-1. Check the service is up:
-
-   ```bash
-   sudo systemctl status bitcoind.service
-   ```
-
-   You want `Active: active (running)`.
-
-2. Confirm the cookie file is group-readable, Electrs and LND need
-   this later:
-
-   ```bash
-   ls -la /home/admin/.bitcoin/.cookie
-   ```
-
-   The mode should be `-rw-r-----` with owner `bitcoin` and group
-   `bitcoin`.
-
-3. Ask the running node for its view of the chain:
-
-   ```bash
-   bitcoin-cli getblockchaininfo
-   ```
-
-   Early on you'll see a low `blocks` number and a `verificationprogress`
-   far below 1. That's the initial block download in progress. Check
-   back each day; when `verificationprogress` reads `0.99999...`, the
-   node is caught up.
-
-4. To watch it work in real time, tail the debug log (`Ctrl`-`C` to
-   exit):
-
-   ```bash
-   tail -f /home/admin/.bitcoin/debug.log
-   ```
-
-<Callout type="warn" title="Back up any wallet you create">
-  Bitcoin Core on the RaspiBolt is **not** where you should store
-  funds, the Electrum server and Sparrow Wallet in the next pages
-  are. If you do create a wallet here for testing, the file lives at
-  `/data/bitcoin/wallets/<name>/wallet.dat`. Copy it to an encrypted
-  USB stick before you load any real sats into it. The Pi is a node,
-  not a vault.
-</Callout>
-
-**Main takeaway:** `bitcoind` is running under its own user, syncing
-the chain through Tor, and exposing the RPC and ZMQ surfaces the
-next services in this guide will plug into.
-
-## After the initial sync [#after-the-initial-sync]
-
-Once `verificationprogress` clears `0.99999...`, trim the `dbcache`
-back to a sensible steady-state value so Electrs and LND have room
-to breathe, and turn transaction relay back on so the node earns
-its keep on the network.
-
-1. Open the config:
-
-   ```bash
-   sudo nano /home/bitcoin/.bitcoin/bitcoin.conf
-   ```
-
-2. Comment out the IBD tuning lines:
-
-   ```ini
-   #dbcache=2000
-   #blocksonly=1
-   ```
-
-3. Restart the daemon:
-
-   ```bash
-   sudo systemctl restart bitcoind
-   ```
-
-Bitcoin Core now uses its default \~450 MB cache and relays
-transactions in addition to blocks.
-
-## OpenTimestamps client (optional) [#opentimestamps-client-optional]
-
-Later in this guide you'll verify signatures on LND, Electrs, and
-other software. Those projects ship OpenTimestamps proofs for their
-release files, cryptographic evidence that a given file existed
-before a particular Bitcoin block. Your node can verify those proofs
-against its own chain data, so you're not trusting a third-party
-timestamp server.
-
-```bash
-sudo apt install python3 python3-dev python3-pip python3-setuptools python3-wheel
-sudo pip3 install opentimestamps-client --break-system-packages
-ots --version
-```
-
-The `--break-system-packages` flag is Debian 13's way of telling you
-that it prefers packaged installs, in this case, upstream pip is
-the only current source for the client, and it's an isolated tool
-that does not touch the system Python.
-
-## Updating Bitcoin Core later [#updating-bitcoin-core-later]
-
-Upgrades follow the same download-verify-install rhythm as a fresh
-install. Always read the [release notes](https://github.com/bitcoin/bitcoin/releases)
-first, some releases change the data format or default behaviour.
-The `30.2` token and its derived URL in
-`lib/versions.ts` are the single source of truth in this guide; bump
-that file when a new version lands.
-
-```bash
-cd /tmp
-wget https://bitcoincore.org/bin/bitcoin-core-30.2/bitcoin-30.2-aarch64-linux-gnu.tar.gz
-wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS
-wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS.asc
-sha256sum --ignore-missing --check SHA256SUMS
-gpg --verify SHA256SUMS.asc
-tar -xvf bitcoin-30.2-aarch64-linux-gnu.tar.gz
-sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-30.2/bin/*
-sudo systemctl restart bitcoind
-```
-
-
-# Blockchain explorer (/docs/bitcoin/blockchain-explorer)
-
-
-
-Querying a public block explorer is one of the sneakiest ways to
-leak your financial activity. Every address you search, every
-transaction ID you paste, every fee chart you refresh tells the
-explorer operator "this address matters to somebody at this IP."
-Trust your own node instead.
-
-[BTC RPC Explorer](https://github.com/janoside/btc-rpc-explorer) is
-a small, database-free web UI by Daniel McNally. It talks to your
-Bitcoin Core over RPC and to Electrs for address balance queries,
-gives you a clean browser interface for blocks, transactions,
-mempool, and fee estimates, and never phones home.
-
-<Screenshot src="/images/bitcoin_btcrpcexplorer.png" alt="BTC RPC Explorer homepage showing the latest block, mempool summary, and fee estimates" caption="BTC RPC Explorer homepage, reading from your own Bitcoin Core + Electrs" />
-
-## What you'll do [#what-youll-do]
-
-* Install Node.js 22 LTS from NodeSource.
-* Create a dedicated `btcrpcexplorer` user and clone the app.
-* Wire up the `.env` config so it reads `bitcoind`'s cookie and
-  queries Electrs for address data.
-* Run it as a systemd service.
-* Put **Caddy** in front for HTTPS on the LAN.
-
-## Prerequisites [#prerequisites]
-
-You finished [Bitcoin client](/docs/bitcoin/bitcoin-client) and
-[Electrum server](/docs/bitcoin/electrum-server). Bitcoin Core is
-fully synced (`verificationprogress` at 1.0), `txindex=1`
-is in `bitcoin.conf` (the default config in this guide already has
-it), and Electrs is indexed and answering queries.
-
-## Install Node.js 22 LTS [#install-nodejs-22-lts]
-
-Debian 13 ships Node.js 20; BTC RPC Explorer is tested against
-Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
-
-1. Add NodeSource and install:
-
-   ```bash
-   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-   sudo apt install nodejs
-   ```
-
-2. Confirm the version:
-
-   ```bash
-   node --version
-   npm --version
-   ```
-
-   Expected output, a `v22.x` line from `node`, and a `10.x` or newer
-   line from `npm`:
-
-   ```text
-   v22.22.2
-   10.9.7
-   ```
-
-## Create the service user [#create-the-service-user]
-
-```bash
-sudo adduser --disabled-password --gecos "" btcrpcexplorer
-sudo adduser btcrpcexplorer bitcoin
-```
-
-The `bitcoin` group membership is what lets the explorer read
-`/data/bitcoin/.cookie` for RPC authentication.
-
-## Install BTC RPC Explorer [#install-btc-rpc-explorer]
-
-1. Switch to the new user and fetch the latest release tag:
-
-   ```bash
-   sudo su - btcrpcexplorer
-   VERSION=$(curl -sL https://api.github.com/repos/janoside/btc-rpc-explorer/releases/latest | grep -oP '"tag_name": "v\K[^"]+')
-   echo "Installing BTC RPC Explorer $VERSION"
-   ```
-
-2. Clone the source and pull in dependencies with npm. Expect this
-   to take 10 to 20 minutes on a Pi 5, a lot of native modules get
-   built from source:
-
-   ```bash
-   git clone --branch "v$VERSION" https://github.com/janoside/btc-rpc-explorer.git
-   cd btc-rpc-explorer
-   npm install
-   ```
-
-<Callout type="info" title="About the npm audit noise">
-  `npm install` will print warnings about vulnerabilities in transitive
-  dependencies. Read them, but don't panic. The explorer serves only
-  to **you** on your LAN; the realistic threat surface is your own
-  browser, not a remote attacker poking at the Express server. Don't
-  blindly `npm audit fix`, it'll break things.
-</Callout>
-
-## Configure [#configure]
-
-The explorer reads its config from `.env` in the install directory.
-A heavily commented template ships with the source. You only need to
-change a handful of lines.
-
-1. Copy the template and open it:
-
-   ```bash
-   cp .env-sample .env
-   nano .env
-   ```
-
-2. Set the Bitcoin Core connection (cookie auth, no password to
-   leak):
-
-   ```ini
-   BTCEXP_BITCOIND_HOST=127.0.0.1
-   BTCEXP_BITCOIND_PORT=8332
-   BTCEXP_BITCOIND_COOKIE=/data/bitcoin/.cookie
-   BTCEXP_BITCOIND_RPC_TIMEOUT=10000
-   ```
-
-3. Route address-balance queries through your local Electrs so they
-   never leak to a third party:
-
-   ```ini
-   BTCEXP_ADDRESS_API=electrum
-   BTCEXP_ELECTRUM_SERVERS=tcp://127.0.0.1:50001
-   ```
-
-4. Pick a privacy posture. "More information" mode pulls exchange
-   rates and a few other externally-hosted tidbits over the public
-   internet:
-
-   ```ini
-   BTCEXP_PRIVACY_MODE=false
-   BTCEXP_NO_RATES=false
-   ```
-
-   Or lock it down completely:
-
-   ```ini
-   BTCEXP_PRIVACY_MODE=true
-   BTCEXP_NO_RATES=true
-   ```
-
-5. (Optional) Gate the UI with a password. Any username works; only
-   the password is checked. Use &#x2A;*password \[D]** from
-   [Preparations](/docs/raspberry-pi/preparations#passwords):
-
-   ```ini
-   BTCEXP_BASIC_AUTH_PASSWORD=YourPasswordD
-   ```
-
-6. Dark theme, because it's a block explorer and you're not a
-   monster:
-
-   ```ini
-   BTCEXP_UI_THEME=dark
-   ```
-
-7. Save, exit, and drop back to `admin`:
-
-   ```bash
-   exit
-   ```
-
-## Run it once by hand [#run-it-once-by-hand]
-
-Before handing it to systemd, start it manually to shake out any
-config mistakes:
-
-```bash
-sudo su - btcrpcexplorer
-cd ~/btc-rpc-explorer
-npm run start
-```
-
-The explorer should bind to `http://127.0.0.1:3002`. If the console
-fills with RPC errors, Bitcoin Core is either not running or still
-reindexing, leave this alone until `bitcoin-cli getblockchaininfo`
-reports a `verificationprogress` at 1.0.
-
-Stop it with `Ctrl`-`C` and exit back to `admin`:
-
-```bash
-exit
-```
-
-## Systemd unit [#systemd-unit]
-
-1. Create the service file:
-
-   ```bash
-   sudo nano /etc/systemd/system/btcrpcexplorer.service
-   ```
-
-2. Paste:
-
-   ```ini
-   # RaspiBolt: systemd unit for BTC RPC Explorer
-   # /etc/systemd/system/btcrpcexplorer.service
-
-   [Unit]
-   Description=BTC RPC Explorer
-   Wants=bitcoind.service electrs.service
-   After=bitcoind.service electrs.service
-
-   [Service]
-   WorkingDirectory=/home/btcrpcexplorer/btc-rpc-explorer
-   ExecStart=/usr/bin/npm start
-   User=btcrpcexplorer
-   Restart=on-failure
-   RestartSec=30
-
-   # Hardening
-   PrivateTmp=true
-   NoNewPrivileges=true
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-3. Enable and start:
-
-   ```bash
-   sudo systemctl enable btcrpcexplorer
-   sudo systemctl start btcrpcexplorer
-   sudo journalctl -f -u btcrpcexplorer
-   ```
-
-   Watch the log for a "listening on port 3002" line, then
-   `Ctrl`-`C`.
-
-## HTTPS on the LAN with Caddy [#https-on-the-lan-with-caddy]
-
-The explorer's Express server speaks HTTP on port 3002. You want
-browser access over HTTPS, and you want it without fighting
-certificate tooling. **Caddy** handles this in five lines of config
-and issues itself a certificate from its own internal CA.
-
-### Install Caddy [#install-caddy]
-
-The official Caddy apt repo is the right source. One-time setup:
-
-```bash
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-  | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-  | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update
-sudo apt install caddy
-caddy version
-```
-
-### Configure the reverse proxy [#configure-the-reverse-proxy]
-
-1. Open the Caddyfile:
-
-   ```bash
-   sudo nano /etc/caddy/Caddyfile
-   ```
-
-2. Replace the default welcome-page stanza with:
-
-   ```text
-   # RaspiBolt: Caddy HTTPS reverse proxy
-   # /etc/caddy/Caddyfile
-
-   # BTC RPC Explorer
-   :4000 {
-     tls internal
-     reverse_proxy 127.0.0.1:3002
-   }
-   ```
-
-   `tls internal` tells Caddy to mint and manage a self-signed
-   certificate from its own CA, no public DNS needed.
-
-3. Reload Caddy and open the firewall:
-
-   ```bash
-   sudo systemctl reload caddy
-   sudo ufw allow 4000/tcp comment 'BTC RPC Explorer (Caddy)'
-   ```
-
-4. Point your browser at `https://raspibolt.local:4000` (or the
-   Pi's IP address). Click past the browser's one-time certificate
-   warning, self-signed certs trigger that, and on a LAN it's fine.
-
-<Callout type="info" title="Trust Caddy's CA on your computer (optional)">
-  Tired of the certificate warning? Caddy's internal CA root lives
-  at `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt`
-  on the Pi. Copy that file to your computer, import it into the
-  system trust store, and all the Caddy-fronted services on this node
-  will be trusted without prompting. Skip this if you'd rather keep
-  the CA contained to the Pi, first-use trust is fine too.
-</Callout>
-
-**Main takeaway:** you can now browse blocks, transactions, and
-fee estimates at `https://raspibolt.local:4000` without telling
-anyone else what you're looking at.
-
-## Remote access over Tor (optional) [#remote-access-over-tor-optional]
-
-Want the explorer available from a phone on mobile data? Expose it
-as a Tor hidden service and visit it through Tor Browser.
-
-1. Add a stanza to `/etc/tor/torrc`:
-
-   ```bash
-   sudo nano /etc/tor/torrc
-   ```
-
-   ```text
-   # Hidden service: BTC RPC Explorer
-   HiddenServiceDir /var/lib/tor/hidden_service_btcrpcexplorer/
-   HiddenServiceVersion 3
-   HiddenServicePort 80 127.0.0.1:3002
-   ```
-
-2. Reload Tor and fetch the `.onion`:
-
-   ```bash
-   sudo systemctl reload tor
-   sudo cat /var/lib/tor/hidden_service_btcrpcexplorer/hostname
-   ```
-
-3. Open that address in the [Tor Browser](https://www.torproject.org).
-   No certificates, no warnings, Tor's own end-to-end encryption
-   replaces TLS.
-
-## Updating BTC RPC Explorer later [#updating-btc-rpc-explorer-later]
-
-1. Stop the service and switch to the app user:
-
-   ```bash
-   sudo systemctl stop btcrpcexplorer
-   sudo su - btcrpcexplorer
-   ```
-
-2. Update to the latest tag:
-
-   ```bash
-   cd ~/btc-rpc-explorer
-   git fetch
-   git reset --hard HEAD
-   VERSION=$(git tag | sort --version-sort | tail -n 1)
-   echo "Upgrading to $VERSION"
-   git checkout "$VERSION"
-   npm install
-   exit
-   ```
-
-3. Restart:
-
-   ```bash
-   sudo systemctl start btcrpcexplorer
-   ```
-
-Always skim the [changelog](https://github.com/janoside/btc-rpc-explorer/blob/master/CHANGELOG.md)
-first, breaking changes are rare but not unheard of.
-
-
-# Desktop wallet (/docs/bitcoin/desktop-wallet)
-
-
-
-A node with no wallet is a useful thing, but it's not a personal
-thing. This page closes the loop: a wallet on your computer, talking
-to your node on the Pi, signing with a hardware wallet you hold in
-your hand. That's the endgame, your keys, your node, your
-validation, your privacy.
-
-The pick: [**Sparrow Wallet**](https://sparrowwallet.com) by Craig
-Raw. Active development, transparent about what it's doing under the
-hood, first-class support for every common hardware wallet, excellent
-coin control, PSBTs, and batching. Sparrow is the right default for
-most people using a RaspiBolt.
-
-<Screenshot src="/images/bitcoin_sparrow.png" alt="Sparrow Wallet main screen showing transactions, balance, and connected Electrs server" caption="Sparrow Wallet connected to a private Electrs server" />
-
-## Not Sparrow? [#not-sparrow]
-
-If Sparrow doesn't fit your workflow, these are all fine companions
-to a RaspiBolt:
-
-* [**BitBoxApp**](https://bitbox.swiss/app/), the natural choice
-  if you hold a BitBox02 hardware wallet.
-* [**Electrum desktop**](https://electrum.org/), the original.
-  Powerful, a little austere, and still the yardstick for Electrum
-  server compatibility.
-* [**Specter Desktop**](https://specter.solutions/desktop/),
-  focused on multisig and air-gapped workflows. Connects directly
-  to Bitcoin Core rather than Electrs.
-* **Ledger Live** or **Trezor Suite**, OK if you're already in
-  those ecosystems; both can point at your Bitcoin Core RPC. Less
-  flexible than Sparrow.
-
-The rest of this page walks through Sparrow. The other wallets
-follow roughly the same pattern, pick the "Private Electrum
-Server" option and point it at your Pi.
-
-## Hot wallet, watch-only, and why hardware matters [#hot-wallet-watch-only-and-why-hardware-matters]
-
-A quick piece of framing before you install anything.
-
-* A **hot wallet** holds its private keys in plaintext on a device
-  connected to the internet. Fine for small amounts; dangerous for
-  savings.
-* A **watch-only wallet** holds only your *public* keys. It can
-  show balances, build transactions, and tell a hardware wallet
-  what to sign, but it cannot spend anything without the hardware
-  wallet present.
-* A **hardware wallet** keeps private keys on a small dedicated
-  device that never exposes them to your computer. Signing happens
-  on the device itself; your computer only sees the signed
-  transaction.
-
-Sparrow is happiest when it's watch-only plus a hardware wallet on
-a USB port. This is why, if you can swing it, you'll want a
-BitBox02, Coldcard, Jade, Ledger, or Trezor before you load real
-funds into this setup.
-
-## Install Sparrow [#install-sparrow]
-
-Sparrow ships signed releases for Windows, macOS, and Linux. Verify
-before you run.
-
-1. Open [sparrowwallet.com/download](https://sparrowwallet.com/download)
-   and grab:
-   * the installer for your OS,
-   * the `sparrow-<version>-manifest.txt`,
-   * the `sparrow-<version>-manifest.txt.asc` signature.
-
-2. Follow Sparrow's own [release verification guide](https://sparrowwallet.com/download/#release-verification).
-   The short version: import Craig Raw's PGP key, verify the
-   manifest signature, then verify the installer against the
-   manifest's SHA256.
-
-3. Install and launch Sparrow.
-
-<Callout type="warn" title="Verify, then install">
-  If the signature check fails, stop. Don't install. Ask on Sparrow's
-  Telegram before doing anything else, this is not the moment to
-  give a random binary your seed words.
-</Callout>
-
-## Connect Sparrow to your node [#connect-sparrow-to-your-node]
-
-Sparrow's first-run wizard walks you straight into server
-configuration. If you're past that screen, you can reach the same
-dialog at any time with **Preferences → Server** (`Ctrl`-`P` on
-Windows/Linux, `Cmd`-`,` on macOS).
-
-1. Select the **Private Electrum** tab.
-2. **URL:** `raspibolt.local` (or your Pi's IP, e.g. `192.168.0.20`).
-3. **Port:** `50002`.
-4. Toggle **Use SSL** on.
-5. Click **Test Connection**. On first connect, Sparrow shows the
-   self-signed certificate from stunnel, read the fingerprint, then
-   **Accept**. The button turns green and reports something like
-   `Connected to electrs/0.11.1 on protocol version 1.4`.
-6. Close the dialog. Bottom-right of the main window, the server
-   icon should be solid blue, "Connected to ... at height ..." on
-   hover.
-
-<Callout type="info" title="Certificate warning is expected">
-  You saw it coming: the cert was minted by stunnel's openssl command
-  on the Pi, so no public CA has heard of it. The fingerprint you
-  accept now is the one Sparrow will expect on every future connect;
-  if it ever changes unexpectedly, something's off. That's the
-  security value of first-use trust.
-</Callout>
-
-### Troubleshooting a failed connect [#troubleshooting-a-failed-connect]
-
-* **Guest WiFi strikes again.** "Guest" or "isolated" WiFi networks
-  on most home routers block client-to-client traffic, which is
-  exactly what you need. Switch to the main WiFi.
-* **Stale certificate.** If you used Sparrow before connecting to
-  a *different* Electrum server at the same hostname, delete the
-  cached certs and try again:
-  * Windows: `C:\Users\<you>\AppData\Roaming\Sparrow\certs`
-  * macOS: `~/.sparrow/certs`
-  * Linux: `~/.sparrow/certs`
-* **Hostname resolution.** If `raspibolt.local` doesn't resolve,
-  use the Pi's IP address. Some Windows setups never enable mDNS by
-  default.
-
-## Core workflow [#core-workflow]
-
-Once you're connected, Sparrow is your window into the on-chain
-world. A quick tour:
-
-* **Create a wallet** → **New Wallet** → choose a name. For real
-  funds, pick **Connect Hardware Wallet** and let Sparrow import the
-  public keys (xpubs) from your device. The wallet is now watch-only:
-  it can see, but not spend.
-* **Receive:** go to the **Receive** tab, give the next address a
-  label, and share it. Label everything you can. Future-you will
-  thank present-you every time you look at a transaction history.
-* **Send:** pick the UTXOs you want to spend from the **UTXOs** tab
-  (this is coin control, an underrated privacy tool), draft the
-  transaction, and let your hardware wallet sign it. Sparrow shows
-  the exact bytes the device will sign, every fee, and every
-  change output. Nothing is hidden.
-* **PSBT:** if the signing device lives air-gapped (a Coldcard with
-  an SD card, for example), export a Partially Signed Bitcoin
-  Transaction, sign on the cold device, and import the signed PSBT
-  back. Same result; no USB.
-
-## Label your UTXOs [#label-your-utxos]
-
-This deserves its own beat. An unlabeled UTXO set is a chain-analysis
-paradise waiting to happen, you'll absent-mindedly combine a KYC
-exchange UTXO with one from a peer-to-peer trade and quietly doxx
-yourself. Labels in Sparrow persist across wallet opens, get
-exported with the wallet file, and show up in every coin-selection
-dialog. Use them.
-
-**Main takeaway:** with Sparrow talking to your node and a hardware
-wallet plugged in, you have a setup that sits cleanly at the top of
-the self-custody tree, private, verified, spendable, and yours.
-
-## (Optional) Connect over Tor [#optional-connect-over-tor]
-
-Travelling? Point Sparrow at the Tor hidden service you set up in
-[Electrum server](/docs/bitcoin/electrum-server#remote-access-over-tor-optional)
-so you can reach your node from anywhere.
-
-1. In **Preferences → Server → Private Electrum**, click **Edit
-   Existing Connection**.
-2. **URL:** your `.onion` address. &#x2A;*Port:** `50002`. &#x2A;*SSL:** on.
-3. Test. Sparrow's bundled Tor client handles the routing, you
-   don't need to run Tor on the laptop separately, as long as the
-   URL ends in `.onion`.
-
-## (Optional) Tor proxy for external services [#optional-tor-proxy-for-external-services]
-
-Sparrow occasionally reaches outside your wallet: exchange rate
-feeds, CoinJoin coordinators, block broadcasts through public APIs.
-By default those go over clearnet and leak your laptop's public IP
-to whoever runs the other end.
-
-If you're connecting to your node over a `.onion` already, Sparrow's
-built-in Tor proxy covers all of that automatically. Done.
-
-If you're connecting over the LAN (`raspibolt.local` or IP), tell
-Sparrow to route external traffic through Tor running on your laptop:
-
-1. Install and start Tor on the computer:
-   * macOS: `brew install tor && brew services start tor` (SOCKS
-     on port 9050), or run Tor Browser (SOCKS on port 9150).
-   * Linux: `sudo apt install tor && sudo systemctl enable --now tor`
-     (port 9050).
-   * Windows: install the Tor Browser or the Tor Expert Bundle; see
-     [Privacy](/docs/raspberry-pi/privacy#windows) for the specifics.
-2. In **Preferences → Server**, toggle **Use Proxy** on.
-3. **Proxy URL:** `127.0.0.1`. &#x2A;*Port:** `9050` (daemon) or `9150`
-   (Tor Browser).
-4. Test. The secondary icon at bottom-right now reads "External
-   Tor proxy enabled".
-
-## Updating Sparrow [#updating-sparrow]
-
-Sparrow checks for updates on launch and tells you when a new
-version is out. Download from the [releases page](https://sparrowwallet.com/download),
-verify the signature the same way you did at install, and replace
-the installed version. The wallet files live in your user profile
-and survive any reinstall.
-
-
-# Electrum server (/docs/bitcoin/electrum-server)
-
-
-
-Your own Bitcoin Core is great at answering questions about blocks.
-It's lousy at answering "what's the balance of this address?",
-because doing that means walking the entire chain every time.
-[Electrs](https://github.com/romanz/electrs) bridges the gap: it
-reads blocks from Bitcoin Core, builds an index keyed by address and
-script, and serves answers on the Electrum protocol that desktop
-wallets like Sparrow, the BitBoxApp, Electrum, or Specter already
-speak.
-
-This is why running Electrs next to your node matters for privacy.
-Without it, a wallet querying "public" Electrum servers tells
-strangers exactly which addresses belong to you. With Electrs local,
-the query never leaves the Pi.
-
-## What you'll do [#what-youll-do]
-
-* Install Rust so you can build Electrs, the project doesn't ship
-  prebuilt binaries for ARM.
-* Compile and install `electrs` 0.11.1.
-* Put it behind **stunnel** for TLS on the LAN.
-* Wire it up as a systemd service so it starts on boot and stays up.
-
-<Callout type="info" title="Expect a long initial index">
-  Hands-on setup is about 30 minutes. The slow part comes after: once
-  `electrs` starts, it reads the whole chain from `bitcoind` and builds
-  its own address index. On a Pi 5 with NVMe that's roughly **8 to 12
-  hours**; on a Pi 4 with USB SSD it can stretch past a day. The Pi
-  will feel sluggish while it runs, disk I/O is the bottleneck.
-  Nothing to babysit, check back the next day. Make sure Bitcoin Core
-  is fully synced (`verificationprogress` at 1.0) before you start,
-  otherwise `electrs` will happily index a moving target and thrash.
-</Callout>
-
-<Callout type="info" title="stunnel for raw TCP, Caddy for HTTP">
-  Earlier versions of this guide used NGINX's stream module to wrap
-  Electrum's plain-TCP protocol in TLS. In v4, HTTP services get
-  Caddy (you'll see that in the next page), but the Electrum protocol
-  isn't HTTP, it's JSON-RPC over a raw TCP socket. `stunnel` is the
-  time-tested, one-config-file tool for exactly that job.
-</Callout>
-
-## Build dependencies [#build-dependencies]
-
-Electrs is written in Rust and links against `clang` and `cmake` for
-its native dependencies (mostly RocksDB). Install them once:
-
-```bash
-sudo apt install cargo clang cmake build-essential libclang-dev pkg-config
-```
-
-Using Debian's packaged `cargo` avoids the extra step of installing
-`rustup` just for this one crate. The tradeoff is a slightly older
-Rust toolchain, still current enough for Electrs 0.11.1.
-
-## Build Electrs from source [#build-electrs-from-source]
-
-No binaries, no shortcuts: you build from a signed tag. That's the
-only way to know the thing running on your node matches what the
-maintainer, [Roman Zeyde](https://github.com/romanz), actually
-released.
-
-1. As `admin`, clone the repo at a specific tag:
-
-   ```bash
-   mkdir -p /home/admin/rust
-   cd /home/admin/rust
-   git clone --branch v0.11.1 https://github.com/romanz/electrs.git
-   cd electrs
-   ```
-
-2. Verify the release tag. Starting with v0.11.1 Roman signs tags
-   with SSH instead of PGP; he publishes the signing key in a
-   [dedicated repo](https://github.com/romanz/keys) whose `README.md`
-   is itself PGP-signed by his old GPG key, binding the transition.
-
-   Register his SSH signing key as a trusted signer for `git` and
-   point git's SSH-signature verification at that file:
-
-   ```bash
-   mkdir -p ~/.config/git
-   echo 'git@romanzey.de ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAZVq/3fgkildjN/MqEnhrP5550sDpFzGxMwevr5q/9w' \
-     > ~/.config/git/allowed_signers
-   git config --global gpg.format ssh
-   git config --global gpg.ssh.allowedSignersFile ~/.config/git/allowed_signers
-   git verify-tag v0.11.1
-   ```
-
-   Expected output:
-
-   ```text
-   Good "git" signature for git@romanzey.de with ED25519 key SHA256:GifMn7F2swVKyn6MewbQHrYCs4i/bPK7gnwxhuPz/YA
-   ```
-
-   The fingerprint `SHA256:GifMn7F2swVKyn6MewbQHrYCs4i/bPK7gnwxhuPz/YA`
-   is what matters; compare it against what you see in your terminal
-   and against the key published in Roman's
-   [keys repo](https://github.com/romanz/keys).
-
-3. Build it. On a Pi 5 this takes somewhere between 30 minutes and
-   an hour; the Pi will work hard, and that's fine:
-
-   ```bash
-   cargo build --locked --release
-   ```
-
-4. Install the resulting binary to `/usr/local/bin`:
-
-   ```bash
-   sudo install -m 0755 -o root -g root -t /usr/local/bin ./target/release/electrs
-   electrs --version
-   ```
-
-   Expected output:
-
-   ```text
-   v0.11.1
-   ```
-
-## Service user and data directory [#service-user-and-data-directory]
-
-Like `bitcoind`, Electrs runs as its own user with no shell password
-and a tidy data directory on the SSD.
-
-```bash
-sudo adduser --disabled-password --gecos "" electrs
-sudo adduser electrs bitcoin
-sudo mkdir /data/electrs
-sudo chown -R electrs:electrs /data/electrs
-```
-
-The `bitcoin` group membership is what lets Electrs read
-`/data/bitcoin/.cookie` for RPC auth.
-
-## Configuration [#configuration]
-
-1. Switch to the `electrs` user and open a fresh config:
-
-   ```bash
-   sudo su - electrs
-   nano /data/electrs/electrs.conf
-   ```
-
-2. Paste:
-
-   ```ini
-   # RaspiBolt: electrs configuration
-   # /data/electrs/electrs.conf
-
-   # Bitcoin Core, uses the .cookie for auth (group-readable)
-   network = "bitcoin"
-   daemon_dir = "/data/bitcoin"
-   daemon_rpc_addr = "127.0.0.1:8332"
-   daemon_p2p_addr = "127.0.0.1:8333"
-
-   # Electrum protocol endpoint
-   electrum_rpc_addr = "127.0.0.1:50001"
-   db_dir = "/data/electrs/db"
-
-   # Logging
-   log_filters = "INFO"
-   timestamp = true
-   ```
-
-3. Do a first dry run to make sure the config is sane and Electrs
-   can talk to Bitcoin Core. It'll immediately start indexing, that
-   is expected and will take hours, but you only need to see the
-   first few lines of progress before you cancel:
-
-   ```bash
-   electrs --conf /data/electrs/electrs.conf
-   ```
-
-   Within a few seconds you should see lines like
-   `serving Electrum RPC on 127.0.0.1:50001` and
-   `indexing 2000 blocks: [1..2000]`. Good. Hit `Ctrl`-`C` and exit
-   back to `admin`:
-
-   ```bash
-   exit
-   ```
-
-## Systemd unit [#systemd-unit]
-
-1. As `admin`, create the unit file:
-
-   ```bash
-   sudo nano /etc/systemd/system/electrs.service
-   ```
-
-2. Paste:
-
-   ```ini
-   # RaspiBolt: systemd unit for electrs
-   # /etc/systemd/system/electrs.service
-
-   [Unit]
-   Description=Electrs daemon
-   Wants=bitcoind.service
-   After=bitcoind.service
-
-   [Service]
-   ExecStart=/usr/local/bin/electrs --conf /data/electrs/electrs.conf
-
-   Type=simple
-   Restart=always
-   TimeoutSec=120
-   RestartSec=30
-   KillMode=process
-
-   User=electrs
-   RuntimeDirectory=electrs
-   RuntimeDirectoryMode=0710
-
-   # Hardening
-   PrivateTmp=true
-   PrivateDevices=true
-   MemoryDenyWriteExecute=true
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-3. Enable and start:
-
-   ```bash
-   sudo systemctl enable electrs
-   sudo systemctl start electrs
-   ```
-
-4. Watch it index in real time (`Ctrl`-`C` to exit):
-
-   ```bash
-   sudo journalctl -f -u electrs
-   ```
-
-<Callout type="warn" title="Electrs must finish indexing before you connect a wallet">
-  The first index pass walks the entire chain and builds the address
-  index on disk. On a Pi 5 with an SSD plan on **eight to twelve
-  hours**; on a Pi 4, closer to a day. Don't try to connect Sparrow
-  until the log quiets down and Electrs reports a caught-up tip,
-  pointing a wallet at an Electrum server that's still indexing will
-  just time out.
-</Callout>
-
-## TLS on the LAN with stunnel [#tls-on-the-lan-with-stunnel]
-
-Sparrow and other wallets connect to Electrum servers over TLS on
-port 50002. Electrs itself serves plaintext on 50001, which is
-fine *inside* the Pi, but you want the network traffic encrypted
-even on your home LAN. `stunnel` is a tiny, purpose-built proxy that
-wraps a plain TCP socket in TLS and has been doing exactly that for
-two decades.
-
-### Install stunnel [#install-stunnel]
-
-```bash
-sudo apt install stunnel4
-```
-
-### Mint a self-signed certificate [#mint-a-self-signed-certificate]
-
-stunnel doesn't do automatic CA issuance the way Caddy does for HTTP.
-You generate a self-signed certificate once and point the config at
-it. This takes a single command:
-
-```bash
-sudo openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
-  -keyout /etc/stunnel/electrs.key \
-  -out /etc/stunnel/electrs.crt \
-  -subj "/CN=raspibolt.local"
-sudo chmod 600 /etc/stunnel/electrs.key
-```
-
-Ten-year validity is fine for a LAN certificate. Wallets will warn
-once that the certificate isn't from a public CA, you accept it,
-and they remember it from then on.
-
-### Configure stunnel [#configure-stunnel]
-
-1. Create the service config:
-
-   ```bash
-   sudo nano /etc/stunnel/electrs.conf
-   ```
-
-2. Paste:
-
-   ```ini
-   # RaspiBolt: stunnel TLS wrapper for Electrs
-   # /etc/stunnel/electrs.conf
-
-   pid = /var/run/stunnel4/electrs.pid
-
-   [electrs]
-   accept = 50002
-   connect = 127.0.0.1:50001
-   cert = /etc/stunnel/electrs.crt
-   key = /etc/stunnel/electrs.key
-   ```
-
-3. Enable and start:
-
-   ```bash
-   sudo systemctl enable stunnel4
-   sudo systemctl restart stunnel4
-   ```
-
-4. Open the firewall for Electrum over TLS:
-
-   ```bash
-   sudo ufw allow 50002/tcp comment 'Electrum SSL'
-   ```
-
-<Callout type="info" title="Self-signed is fine on the LAN">
-  Wallets will flag the certificate the first time, that's expected.
-  You accept it manually once (Sparrow does this well) or pin the
-  certificate fingerprint in the wallet config. Getting a public-CA
-  certificate would require a real domain name and DNS setup that most
-  home networks don't have. Internal CA plus first-use trust is the
-  sane default here.
-</Callout>
-
-**Main takeaway:** Electrs is indexing on `:50001`, stunnel wraps it
-in TLS on `:50002`, and the firewall lets LAN wallets in. The next
-page points Sparrow at it.
-
-## Remote access over Tor (optional) [#remote-access-over-tor-optional]
-
-You can reach your Electrum server from outside the home network by
-exposing it as a Tor hidden service. The wallet will need Tor
-running locally too.
-
-1. Add a stanza to `/etc/tor/torrc`:
-
-   ```bash
-   sudo nano /etc/tor/torrc
-   ```
-
-   ```text
-   # Hidden service: Electrum
-   HiddenServiceDir /var/lib/tor/hidden_service_electrs/
-   HiddenServiceVersion 3
-   HiddenServicePort 50002 127.0.0.1:50002
-   ```
-
-2. Reload Tor and read the generated `.onion` address:
-
-   ```bash
-   sudo systemctl reload tor
-   sudo cat /var/lib/tor/hidden_service_electrs/hostname
-   ```
-
-   Save that `abcdefg...xyz.onion` in your password manager alongside
-   the one you may already have for SSH. The desktop-wallet page
-   shows how to connect Sparrow to it.
-
-## Updating Electrs later [#updating-electrs-later]
-
-Upgrades follow the same pattern as the first build: check the
-[release notes](https://github.com/romanz/electrs/blob/master/RELEASE-NOTES.md),
-bump `0.11.1` in `lib/versions.ts`, then:
-
-```bash
-cd /home/admin/rust/electrs
-git clean -xfd
-git fetch
-git checkout v0.11.1
-git verify-tag v0.11.1
-cargo clean
-cargo build --locked --release
-sudo cp /usr/local/bin/electrs /usr/local/bin/electrs.old
-sudo install -m 0755 -o root -g root -t /usr/local/bin ./target/release/electrs
-sudo systemctl restart electrs
-```
-
-Keep the old binary around until the new one has served traffic
-for a few hours, rolling back is as simple as copying
-`electrs.old` back on top.
-
-
-# Overview (/docs/bitcoin)
-
-
-
-With the Pi hardened and Tor humming along, the fun part starts.
-You'll turn this neat little box into a first-class citizen of the
-Bitcoin network, a node that validates every block back to the
-genesis block, indexes every transaction for your own software and
-hardware wallets, and serves a private block explorer you never have
-to trust a third party for again.
-
-By the time you finish this section, you'll have:
-
-* **Bitcoin Core 30.2** running as a systemd
-  service, syncing the full blockchain, routing outbound through Tor.
-* **Electrs 0.11.1** indexing the chain for your desktop
-  wallet, no more leaking addresses to public Electrum servers.
-* **BTC RPC Explorer** giving you a private web UI for blocks,
-  transactions, mempool, and fee estimates.
-* **Sparrow Wallet** on your laptop, talking to your own Electrum
-  server over TLS, ready to drive a hardware wallet.
-
-## Prerequisites [#prerequisites]
-
-You've finished the [Raspberry Pi](/docs/raspberry-pi) section. The
-Pi is on the network, SSH is locked to keys, `ufw` and `fail2ban`
-are on watch, and the Tor daemon is listening on its control port
-ready for Bitcoin Core to plug in.
-
-If you want the big picture first, [Architecture](/docs/architecture)
-shows how Bitcoin Core, Electrs, and the block explorer fit together
-with the rest of the stack.
-
-## About the time commitment [#about-the-time-commitment]
-
-The install commands themselves take an afternoon. The blockchain
-sync is the long pole: on a Pi 5 with a decent SSD, the initial block
-download runs about two to five days, and Electrs then spends another
-half day to a day indexing on top of that. Neither step needs
-babysitting, kick it off, glance at the log once a day, and come
-back when it's done.
-
-## Pages in this section [#pages-in-this-section]
-
-1. [Bitcoin client](/docs/bitcoin/bitcoin-client), install Bitcoin
-   Core 30.2, verify the release, tune the config
-   for a Pi 5, start syncing.
-2. [Electrum server](/docs/bitcoin/electrum-server), compile
-   Electrs 0.11.1, index the chain, put Caddy in front
-   of it for TLS on the LAN.
-3. [Blockchain explorer](/docs/bitcoin/blockchain-explorer), install
-   BTC RPC Explorer on Node.js 22, proxy it through Caddy, view your
-   own chain.
-4. [Desktop wallet](/docs/bitcoin/desktop-wallet), point Sparrow
-   (or an alternative) at your Electrum server, drive a hardware
-   wallet, label UTXOs, take coin control seriously.
-
-When the dust settles, head to the [Lightning](/docs/lightning)
-section to turn this node into a Lightning node as well.
-
-
 # Bonus (/docs/bonus)
 
 
@@ -3746,6 +2294,1458 @@ Everything `lncli` does, RTL does with a mouse, plus graphs.
    ```
 
 
+# Bitcoin client (/docs/bitcoin/bitcoin-client)
+
+
+
+[Bitcoin Core](https://bitcoincore.org) is the reference client for
+the Bitcoin network. It downloads the entire blockchain, validates
+every transaction since the genesis block, and from then on holds
+the authoritative answer to "is this UTXO real?", no third party
+asked, no trust extended. Everything else in this guide, Electrs,
+Lightning, the block explorer, is a consumer of this node.
+
+## What to expect [#what-to-expect]
+
+Installing `bitcoind` is a short job. Syncing it is not. On a Pi 5
+with a good USB 3 SSD (or NVMe via the M.2 HAT+), the initial block
+download takes roughly **two to five days**. You don't have to sit
+with it, start it, check in once a day, come back when
+`verificationprogress` is a hair below 1.
+
+<Callout type="info" title="Pi 4 owners">
+  A Pi 4 with 8 GB RAM still gets there, just slower, plan for five to
+  seven days for the initial sync and keep the `dbcache` a little lower
+  (see below). Anything less than 8 GB of RAM will struggle once LND
+  and Electrs join the party; upgrade if you can.
+</Callout>
+
+## Create the bitcoin user [#create-the-bitcoin-user]
+
+`bitcoind` runs as its own system user. No shell password, no
+sudo, if something ever does manage to break out of the daemon, it
+lands in a sandbox, not on your `admin` account.
+
+1. Create the user and add `admin` to its group so you can read its
+   files without juggling `sudo`:
+
+   ```bash
+   sudo adduser --gecos "" --disabled-password bitcoin
+   sudo adduser admin bitcoin
+   ```
+
+2. Put the `bitcoin` user into the `debian-tor` group so it can read
+   Tor's cookie file and use the control port you set up earlier:
+
+   ```bash
+   sudo adduser bitcoin debian-tor
+   ```
+
+## Create the data directory [#create-the-data-directory]
+
+Bitcoin Core defaults to `~/.bitcoin` inside the user's home. On
+this node the chain lives under `/data/bitcoin` on the SSD, a
+separate mount you carved out in [System configuration](/docs/raspberry-pi/system-configuration#data-directory).
+A symlink from `/home/bitcoin/.bitcoin` to that location keeps the
+defaults happy while the actual data sits on the fast disk.
+
+```bash
+sudo mkdir /data/bitcoin
+sudo chown bitcoin:bitcoin /data/bitcoin
+sudo ln -s /data/bitcoin /home/bitcoin/.bitcoin
+sudo chown -h bitcoin:bitcoin /home/bitcoin/.bitcoin
+```
+
+## Download and verify Bitcoin Core [#download-and-verify-bitcoin-core]
+
+Never run a Bitcoin binary you haven't verified. The point of a
+full node is to trust your own software, which means the software
+has to be what the developers actually signed.
+
+1. As `admin`, drop into `/tmp` (cleared on every reboot) and pull
+   the binary, the checksum file, and the signature file:
+
+   ```bash
+   cd /tmp
+   wget https://bitcoincore.org/bin/bitcoin-core-30.2/bitcoin-30.2-aarch64-linux-gnu.tar.gz
+   wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS
+   wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS.asc
+   ```
+
+2. Check the checksum of the archive against the reference. The
+   "improperly formatted" warning is about unrelated platforms in
+   the same file, ignore it:
+
+   ```bash
+   sha256sum --ignore-missing --check SHA256SUMS
+   ```
+
+   You want to see:
+
+   ```text
+   bitcoin-30.2-aarch64-linux-gnu.tar.gz: OK
+   ```
+
+3. Bitcoin Core releases are signed by multiple maintainers through
+   the [guix.sigs repository](https://github.com/bitcoin-core/guix.sigs).
+   Import all current signing keys in one sweep:
+
+   ```bash
+   curl -s "https://api.github.com/repositories/355107265/contents/builder-keys" \
+     | grep download_url \
+     | grep -oE "https://[a-zA-Z0-9./-]+" \
+     | while read url; do curl -s "$url" | gpg --import; done
+   ```
+
+4. Verify the checksum file's signatures. You want several `Good
+   signature` lines, one signature alone is not enough:
+
+   ```bash
+   gpg --verify SHA256SUMS.asc
+   ```
+
+   Skim the output for multiple lines like:
+
+   ```text
+   gpg: Good signature from "..."
+   Primary key fingerprint: ...
+   ```
+
+<Callout type="warn" title="Don't skip the signature check">
+  A matching SHA256 only proves the file matches the checksum file.
+  The GPG step is what proves the checksum file itself came from the
+  Bitcoin Core maintainers and not someone who also controls the
+  download server. Verify both, or verify neither.
+</Callout>
+
+## Install the binaries [#install-the-binaries]
+
+If checksum and signature are happy, extract and install:
+
+```bash
+tar -xvf bitcoin-30.2-aarch64-linux-gnu.tar.gz
+sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-30.2/bin/*
+bitcoin-cli --version
+```
+
+Expected output:
+
+```text
+Bitcoin Core RPC client version v30.2.0
+Copyright (C) 2009-2026 The Bitcoin Core developers
+```
+
+## Generate RPC credentials [#generate-rpc-credentials]
+
+Other programs (Electrs, LND, the block explorer) talk to `bitcoind`
+through its RPC interface. Bitcoin Core doesn't store the password
+in plaintext, it stores a salted hash. A short Python script ships
+with the source tree to generate the config line.
+
+1. As the `bitcoin` user, fetch the helper script:
+
+   ```bash
+   sudo su - bitcoin
+   cd .bitcoin
+   wget https://raw.githubusercontent.com/bitcoin/bitcoin/master/share/rpcauth/rpcauth.py
+   ```
+
+2. Run it with the username `raspibolt` and your &#x2A;*password \[B]**
+   from [Preparations](/docs/raspberry-pi/preparations#passwords).
+   Put a leading space in front of the command so bash keeps it out
+   of your shell history, passwords don't belong in `~/.bash_history`:
+
+   ```bash
+    python3 rpcauth.py raspibolt YourPasswordB
+   ```
+
+   The script prints a line starting with `rpcauth=raspibolt:...$...`.
+   Copy it, you'll paste it into the config file next.
+
+## Write bitcoin.conf [#write-bitcoinconf]
+
+This config is tuned for a Pi 5 with 8 GB of RAM: a generous `dbcache`
+to accelerate the initial sync, outbound traffic through Tor, ZMQ
+ports exposed for LND later on, and RPC locked to localhost.
+
+1. Still as the `bitcoin` user, open the config:
+
+   ```bash
+   nano /home/bitcoin/.bitcoin/bitcoin.conf
+   ```
+
+2. Paste the following. Replace the `rpcauth=` line with the one
+   `rpcauth.py` just printed for you:
+
+   ```ini
+   # RaspiBolt: bitcoind configuration
+   # /home/bitcoin/.bitcoin/bitcoin.conf
+
+   # Daemon
+   server=1
+   txindex=1
+
+   # Network, listen on IPv4 localhost, reach peers over Tor
+   listen=1
+   listenonion=1
+   bind=127.0.0.1
+   proxy=127.0.0.1:9050
+
+   # RPC, paste your own line from rpcauth.py
+   rpcauth=<replace-me>
+   rpccookieperms=group
+
+   # ZMQ for LND and other consumers
+   zmqpubrawblock=tcp://127.0.0.1:28332
+   zmqpubrawtx=tcp://127.0.0.1:28333
+
+   # Electrs gets a whitelisted block-download fast path
+   whitelist=download@127.0.0.1
+
+   # Peer connections
+   maxconnections=40
+   maxuploadtarget=5000
+
+   # Memory pool
+   maxmempool=300
+
+   # Initial block download tuning (Pi 5, 8 GB RAM)
+   # Reduce dbcache to ~450 after the chain is synced.
+   dbcache=2000
+   blocksonly=1
+   ```
+
+3. Lock the file down so only `bitcoin` and its group can read it,
+   the `rpcauth` hash isn't exactly a secret, but it's a credential:
+
+   ```bash
+   chmod 640 /home/bitcoin/.bitcoin/bitcoin.conf
+   ```
+
+<Callout type="info" title="Why blocksonly=1 during IBD?">
+  `blocksonly=1` tells `bitcoind` to skip relaying loose transactions
+  during the initial sync. It cuts bandwidth use significantly while
+  the node is chewing through history. You'll turn it off after the
+  sync completes, alongside the `dbcache` reduction, see the bottom
+  of this page.
+</Callout>
+
+## Systemd unit [#systemd-unit]
+
+The node needs to start on boot and stay running, that's what
+systemd is for. This unit runs `bitcoind` as the `bitcoin` user,
+locks it into a few standard hardening primitives, and restarts on
+failure with a sensible backoff.
+
+1. Drop back to `admin`:
+
+   ```bash
+   exit
+   ```
+
+2. Create the unit file:
+
+   ```bash
+   sudo nano /etc/systemd/system/bitcoind.service
+   ```
+
+3. Paste:
+
+   ```ini
+   # RaspiBolt: systemd unit for bitcoind
+   # /etc/systemd/system/bitcoind.service
+
+   [Unit]
+   Description=Bitcoin daemon
+   After=network-online.target tor.service
+   Wants=network-online.target
+
+   [Service]
+   ExecStart=/usr/local/bin/bitcoind -daemon \
+                                     -pid=/run/bitcoind/bitcoind.pid \
+                                     -conf=/home/bitcoin/.bitcoin/bitcoin.conf \
+                                     -datadir=/home/bitcoin/.bitcoin \
+                                     -startupnotify="systemd-notify --ready"
+
+   Type=forking
+   PIDFile=/run/bitcoind/bitcoind.pid
+   Restart=on-failure
+   TimeoutSec=300
+   RestartSec=30
+
+   User=bitcoin
+   UMask=0027
+
+   RuntimeDirectory=bitcoind
+   RuntimeDirectoryMode=0710
+
+   # Hardening
+   PrivateTmp=true
+   ProtectSystem=full
+   NoNewPrivileges=true
+   PrivateDevices=true
+   MemoryDenyWriteExecute=true
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+4. Enable it (so it runs on boot) and start it now:
+
+   ```bash
+   sudo systemctl enable bitcoind.service
+   sudo systemctl start bitcoind.service
+   ```
+
+5. Also symlink the data directory into `admin`'s home so
+   `bitcoin-cli` works without a `-datadir` flag:
+
+   ```bash
+   ln -s /data/bitcoin /home/admin/.bitcoin
+   ```
+
+## Verify it's syncing [#verify-its-syncing]
+
+1. Check the service is up:
+
+   ```bash
+   sudo systemctl status bitcoind.service
+   ```
+
+   You want `Active: active (running)`.
+
+2. Confirm the cookie file is group-readable, Electrs and LND need
+   this later:
+
+   ```bash
+   ls -la /home/admin/.bitcoin/.cookie
+   ```
+
+   The mode should be `-rw-r-----` with owner `bitcoin` and group
+   `bitcoin`.
+
+3. Ask the running node for its view of the chain:
+
+   ```bash
+   bitcoin-cli getblockchaininfo
+   ```
+
+   Early on you'll see a low `blocks` number and a `verificationprogress`
+   far below 1. That's the initial block download in progress. Check
+   back each day; when `verificationprogress` reads `0.99999...`, the
+   node is caught up.
+
+4. To watch it work in real time, tail the debug log (`Ctrl`-`C` to
+   exit):
+
+   ```bash
+   tail -f /home/admin/.bitcoin/debug.log
+   ```
+
+<Callout type="warn" title="Back up any wallet you create">
+  Bitcoin Core on the RaspiBolt is **not** where you should store
+  funds, the Electrum server and Sparrow Wallet in the next pages
+  are. If you do create a wallet here for testing, the file lives at
+  `/data/bitcoin/wallets/<name>/wallet.dat`. Copy it to an encrypted
+  USB stick before you load any real sats into it. The Pi is a node,
+  not a vault.
+</Callout>
+
+**Main takeaway:** `bitcoind` is running under its own user, syncing
+the chain through Tor, and exposing the RPC and ZMQ surfaces the
+next services in this guide will plug into.
+
+## After the initial sync [#after-the-initial-sync]
+
+Once `verificationprogress` clears `0.99999...`, trim the `dbcache`
+back to a sensible steady-state value so Electrs and LND have room
+to breathe, and turn transaction relay back on so the node earns
+its keep on the network.
+
+1. Open the config:
+
+   ```bash
+   sudo nano /home/bitcoin/.bitcoin/bitcoin.conf
+   ```
+
+2. Comment out the IBD tuning lines:
+
+   ```ini
+   #dbcache=2000
+   #blocksonly=1
+   ```
+
+3. Restart the daemon:
+
+   ```bash
+   sudo systemctl restart bitcoind
+   ```
+
+Bitcoin Core now uses its default \~450 MB cache and relays
+transactions in addition to blocks.
+
+## OpenTimestamps client (optional) [#opentimestamps-client-optional]
+
+Later in this guide you'll verify signatures on LND, Electrs, and
+other software. Those projects ship OpenTimestamps proofs for their
+release files, cryptographic evidence that a given file existed
+before a particular Bitcoin block. Your node can verify those proofs
+against its own chain data, so you're not trusting a third-party
+timestamp server.
+
+```bash
+sudo apt install python3 python3-dev python3-pip python3-setuptools python3-wheel
+sudo pip3 install opentimestamps-client --break-system-packages
+ots --version
+```
+
+The `--break-system-packages` flag is Debian 13's way of telling you
+that it prefers packaged installs, in this case, upstream pip is
+the only current source for the client, and it's an isolated tool
+that does not touch the system Python.
+
+## Updating Bitcoin Core later [#updating-bitcoin-core-later]
+
+Upgrades follow the same download-verify-install rhythm as a fresh
+install. Always read the [release notes](https://github.com/bitcoin/bitcoin/releases)
+first, some releases change the data format or default behaviour.
+The `30.2` token and its derived URL in
+`lib/versions.ts` are the single source of truth in this guide; bump
+that file when a new version lands.
+
+```bash
+cd /tmp
+wget https://bitcoincore.org/bin/bitcoin-core-30.2/bitcoin-30.2-aarch64-linux-gnu.tar.gz
+wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS
+wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS.asc
+sha256sum --ignore-missing --check SHA256SUMS
+gpg --verify SHA256SUMS.asc
+tar -xvf bitcoin-30.2-aarch64-linux-gnu.tar.gz
+sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-30.2/bin/*
+sudo systemctl restart bitcoind
+```
+
+
+# Blockchain explorer (/docs/bitcoin/blockchain-explorer)
+
+
+
+Querying a public block explorer is one of the sneakiest ways to
+leak your financial activity. Every address you search, every
+transaction ID you paste, every fee chart you refresh tells the
+explorer operator "this address matters to somebody at this IP."
+Trust your own node instead.
+
+[BTC RPC Explorer](https://github.com/janoside/btc-rpc-explorer) is
+a small, database-free web UI by Daniel McNally. It talks to your
+Bitcoin Core over RPC and to Electrs for address balance queries,
+gives you a clean browser interface for blocks, transactions,
+mempool, and fee estimates, and never phones home.
+
+<Screenshot src="/images/bitcoin_btcrpcexplorer.png" alt="BTC RPC Explorer homepage showing the latest block, mempool summary, and fee estimates" caption="BTC RPC Explorer homepage, reading from your own Bitcoin Core + Electrs" />
+
+## What you'll do [#what-youll-do]
+
+* Install Node.js 22 LTS from NodeSource.
+* Create a dedicated `btcrpcexplorer` user and clone the app.
+* Wire up the `.env` config so it reads `bitcoind`'s cookie and
+  queries Electrs for address data.
+* Run it as a systemd service.
+* Put **Caddy** in front for HTTPS on the LAN.
+
+## Prerequisites [#prerequisites]
+
+You finished [Bitcoin client](/docs/bitcoin/bitcoin-client) and
+[Electrum server](/docs/bitcoin/electrum-server). Bitcoin Core is
+fully synced (`verificationprogress` at 1.0), `txindex=1`
+is in `bitcoin.conf` (the default config in this guide already has
+it), and Electrs is indexed and answering queries.
+
+## Install Node.js 22 LTS [#install-nodejs-22-lts]
+
+Debian 13 ships Node.js 20; BTC RPC Explorer is tested against
+Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
+
+1. Add NodeSource and install:
+
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+   sudo apt install nodejs
+   ```
+
+2. Confirm the version:
+
+   ```bash
+   node --version
+   npm --version
+   ```
+
+   Expected output, a `v22.x` line from `node`, and a `10.x` or newer
+   line from `npm`:
+
+   ```text
+   v22.22.2
+   10.9.7
+   ```
+
+## Create the service user [#create-the-service-user]
+
+```bash
+sudo adduser --disabled-password --gecos "" btcrpcexplorer
+sudo adduser btcrpcexplorer bitcoin
+```
+
+The `bitcoin` group membership is what lets the explorer read
+`/data/bitcoin/.cookie` for RPC authentication.
+
+## Install BTC RPC Explorer [#install-btc-rpc-explorer]
+
+1. Switch to the new user and fetch the latest release tag:
+
+   ```bash
+   sudo su - btcrpcexplorer
+   VERSION=$(curl -sL https://api.github.com/repos/janoside/btc-rpc-explorer/releases/latest | grep -oP '"tag_name": "v\K[^"]+')
+   echo "Installing BTC RPC Explorer $VERSION"
+   ```
+
+2. Clone the source and pull in dependencies with npm. Expect this
+   to take 10 to 20 minutes on a Pi 5, a lot of native modules get
+   built from source:
+
+   ```bash
+   git clone --branch "v$VERSION" https://github.com/janoside/btc-rpc-explorer.git
+   cd btc-rpc-explorer
+   npm install
+   ```
+
+<Callout type="info" title="About the npm audit noise">
+  `npm install` will print warnings about vulnerabilities in transitive
+  dependencies. Read them, but don't panic. The explorer serves only
+  to **you** on your LAN; the realistic threat surface is your own
+  browser, not a remote attacker poking at the Express server. Don't
+  blindly `npm audit fix`, it'll break things.
+</Callout>
+
+## Configure [#configure]
+
+The explorer reads its config from `.env` in the install directory.
+A heavily commented template ships with the source. You only need to
+change a handful of lines.
+
+1. Copy the template and open it:
+
+   ```bash
+   cp .env-sample .env
+   nano .env
+   ```
+
+2. Set the Bitcoin Core connection (cookie auth, no password to
+   leak):
+
+   ```ini
+   BTCEXP_BITCOIND_HOST=127.0.0.1
+   BTCEXP_BITCOIND_PORT=8332
+   BTCEXP_BITCOIND_COOKIE=/data/bitcoin/.cookie
+   BTCEXP_BITCOIND_RPC_TIMEOUT=10000
+   ```
+
+3. Route address-balance queries through your local Electrs so they
+   never leak to a third party:
+
+   ```ini
+   BTCEXP_ADDRESS_API=electrum
+   BTCEXP_ELECTRUM_SERVERS=tcp://127.0.0.1:50001
+   ```
+
+4. Pick a privacy posture. "More information" mode pulls exchange
+   rates and a few other externally-hosted tidbits over the public
+   internet:
+
+   ```ini
+   BTCEXP_PRIVACY_MODE=false
+   BTCEXP_NO_RATES=false
+   ```
+
+   Or lock it down completely:
+
+   ```ini
+   BTCEXP_PRIVACY_MODE=true
+   BTCEXP_NO_RATES=true
+   ```
+
+5. (Optional) Gate the UI with a password. Any username works; only
+   the password is checked. Use &#x2A;*password \[D]** from
+   [Preparations](/docs/raspberry-pi/preparations#passwords):
+
+   ```ini
+   BTCEXP_BASIC_AUTH_PASSWORD=YourPasswordD
+   ```
+
+6. Dark theme, because it's a block explorer and you're not a
+   monster:
+
+   ```ini
+   BTCEXP_UI_THEME=dark
+   ```
+
+7. Save, exit, and drop back to `admin`:
+
+   ```bash
+   exit
+   ```
+
+## Run it once by hand [#run-it-once-by-hand]
+
+Before handing it to systemd, start it manually to shake out any
+config mistakes:
+
+```bash
+sudo su - btcrpcexplorer
+cd ~/btc-rpc-explorer
+npm run start
+```
+
+The explorer should bind to `http://127.0.0.1:3002`. If the console
+fills with RPC errors, Bitcoin Core is either not running or still
+reindexing, leave this alone until `bitcoin-cli getblockchaininfo`
+reports a `verificationprogress` at 1.0.
+
+Stop it with `Ctrl`-`C` and exit back to `admin`:
+
+```bash
+exit
+```
+
+## Systemd unit [#systemd-unit]
+
+1. Create the service file:
+
+   ```bash
+   sudo nano /etc/systemd/system/btcrpcexplorer.service
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: systemd unit for BTC RPC Explorer
+   # /etc/systemd/system/btcrpcexplorer.service
+
+   [Unit]
+   Description=BTC RPC Explorer
+   Wants=bitcoind.service electrs.service
+   After=bitcoind.service electrs.service
+
+   [Service]
+   WorkingDirectory=/home/btcrpcexplorer/btc-rpc-explorer
+   ExecStart=/usr/bin/npm start
+   User=btcrpcexplorer
+   Restart=on-failure
+   RestartSec=30
+
+   # Hardening
+   PrivateTmp=true
+   NoNewPrivileges=true
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+3. Enable and start:
+
+   ```bash
+   sudo systemctl enable btcrpcexplorer
+   sudo systemctl start btcrpcexplorer
+   sudo journalctl -f -u btcrpcexplorer
+   ```
+
+   Watch the log for a "listening on port 3002" line, then
+   `Ctrl`-`C`.
+
+## HTTPS on the LAN with Caddy [#https-on-the-lan-with-caddy]
+
+The explorer's Express server speaks HTTP on port 3002. You want
+browser access over HTTPS, and you want it without fighting
+certificate tooling. **Caddy** handles this in five lines of config
+and issues itself a certificate from its own internal CA.
+
+### Install Caddy [#install-caddy]
+
+The official Caddy apt repo is the right source. One-time setup:
+
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install caddy
+caddy version
+```
+
+### Configure the reverse proxy [#configure-the-reverse-proxy]
+
+1. Open the Caddyfile:
+
+   ```bash
+   sudo nano /etc/caddy/Caddyfile
+   ```
+
+2. Replace the default welcome-page stanza with:
+
+   ```text
+   # RaspiBolt: Caddy HTTPS reverse proxy
+   # /etc/caddy/Caddyfile
+
+   # BTC RPC Explorer
+   :4000 {
+     tls internal
+     reverse_proxy 127.0.0.1:3002
+   }
+   ```
+
+   `tls internal` tells Caddy to mint and manage a self-signed
+   certificate from its own CA, no public DNS needed.
+
+3. Reload Caddy and open the firewall:
+
+   ```bash
+   sudo systemctl reload caddy
+   sudo ufw allow 4000/tcp comment 'BTC RPC Explorer (Caddy)'
+   ```
+
+4. Point your browser at `https://raspibolt.local:4000` (or the
+   Pi's IP address). Click past the browser's one-time certificate
+   warning, self-signed certs trigger that, and on a LAN it's fine.
+
+<Callout type="info" title="Trust Caddy's CA on your computer (optional)">
+  Tired of the certificate warning? Caddy's internal CA root lives
+  at `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt`
+  on the Pi. Copy that file to your computer, import it into the
+  system trust store, and all the Caddy-fronted services on this node
+  will be trusted without prompting. Skip this if you'd rather keep
+  the CA contained to the Pi, first-use trust is fine too.
+</Callout>
+
+**Main takeaway:** you can now browse blocks, transactions, and
+fee estimates at `https://raspibolt.local:4000` without telling
+anyone else what you're looking at.
+
+## Remote access over Tor (optional) [#remote-access-over-tor-optional]
+
+Want the explorer available from a phone on mobile data? Expose it
+as a Tor hidden service and visit it through Tor Browser.
+
+1. Add a stanza to `/etc/tor/torrc`:
+
+   ```bash
+   sudo nano /etc/tor/torrc
+   ```
+
+   ```text
+   # Hidden service: BTC RPC Explorer
+   HiddenServiceDir /var/lib/tor/hidden_service_btcrpcexplorer/
+   HiddenServiceVersion 3
+   HiddenServicePort 80 127.0.0.1:3002
+   ```
+
+2. Reload Tor and fetch the `.onion`:
+
+   ```bash
+   sudo systemctl reload tor
+   sudo cat /var/lib/tor/hidden_service_btcrpcexplorer/hostname
+   ```
+
+3. Open that address in the [Tor Browser](https://www.torproject.org).
+   No certificates, no warnings, Tor's own end-to-end encryption
+   replaces TLS.
+
+## Updating BTC RPC Explorer later [#updating-btc-rpc-explorer-later]
+
+1. Stop the service and switch to the app user:
+
+   ```bash
+   sudo systemctl stop btcrpcexplorer
+   sudo su - btcrpcexplorer
+   ```
+
+2. Update to the latest tag:
+
+   ```bash
+   cd ~/btc-rpc-explorer
+   git fetch
+   git reset --hard HEAD
+   VERSION=$(git tag | sort --version-sort | tail -n 1)
+   echo "Upgrading to $VERSION"
+   git checkout "$VERSION"
+   npm install
+   exit
+   ```
+
+3. Restart:
+
+   ```bash
+   sudo systemctl start btcrpcexplorer
+   ```
+
+Always skim the [changelog](https://github.com/janoside/btc-rpc-explorer/blob/master/CHANGELOG.md)
+first, breaking changes are rare but not unheard of.
+
+
+# Desktop wallet (/docs/bitcoin/desktop-wallet)
+
+
+
+A node with no wallet is a useful thing, but it's not a personal
+thing. This page closes the loop: a wallet on your computer, talking
+to your node on the Pi, signing with a hardware wallet you hold in
+your hand. That's the endgame, your keys, your node, your
+validation, your privacy.
+
+The pick: [**Sparrow Wallet**](https://sparrowwallet.com) by Craig
+Raw. Active development, transparent about what it's doing under the
+hood, first-class support for every common hardware wallet, excellent
+coin control, PSBTs, and batching. Sparrow is the right default for
+most people using a RaspiBolt.
+
+<Screenshot src="/images/bitcoin_sparrow.png" alt="Sparrow Wallet main screen showing transactions, balance, and connected Electrs server" caption="Sparrow Wallet connected to a private Electrs server" />
+
+## Not Sparrow? [#not-sparrow]
+
+If Sparrow doesn't fit your workflow, these are all fine companions
+to a RaspiBolt:
+
+* [**BitBoxApp**](https://bitbox.swiss/app/), the natural choice
+  if you hold a BitBox02 hardware wallet.
+* [**Electrum desktop**](https://electrum.org/), the original.
+  Powerful, a little austere, and still the yardstick for Electrum
+  server compatibility.
+* [**Specter Desktop**](https://specter.solutions/desktop/),
+  focused on multisig and air-gapped workflows. Connects directly
+  to Bitcoin Core rather than Electrs.
+* **Ledger Live** or **Trezor Suite**, OK if you're already in
+  those ecosystems; both can point at your Bitcoin Core RPC. Less
+  flexible than Sparrow.
+
+The rest of this page walks through Sparrow. The other wallets
+follow roughly the same pattern, pick the "Private Electrum
+Server" option and point it at your Pi.
+
+## Hot wallet, watch-only, and why hardware matters [#hot-wallet-watch-only-and-why-hardware-matters]
+
+A quick piece of framing before you install anything.
+
+* A **hot wallet** holds its private keys in plaintext on a device
+  connected to the internet. Fine for small amounts; dangerous for
+  savings.
+* A **watch-only wallet** holds only your *public* keys. It can
+  show balances, build transactions, and tell a hardware wallet
+  what to sign, but it cannot spend anything without the hardware
+  wallet present.
+* A **hardware wallet** keeps private keys on a small dedicated
+  device that never exposes them to your computer. Signing happens
+  on the device itself; your computer only sees the signed
+  transaction.
+
+Sparrow is happiest when it's watch-only plus a hardware wallet on
+a USB port. This is why, if you can swing it, you'll want a
+BitBox02, Coldcard, Jade, Ledger, or Trezor before you load real
+funds into this setup.
+
+## Install Sparrow [#install-sparrow]
+
+Sparrow ships signed releases for Windows, macOS, and Linux. Verify
+before you run.
+
+1. Open [sparrowwallet.com/download](https://sparrowwallet.com/download)
+   and grab:
+   * the installer for your OS,
+   * the `sparrow-<version>-manifest.txt`,
+   * the `sparrow-<version>-manifest.txt.asc` signature.
+
+2. Follow Sparrow's own [release verification guide](https://sparrowwallet.com/download/#release-verification).
+   The short version: import Craig Raw's PGP key, verify the
+   manifest signature, then verify the installer against the
+   manifest's SHA256.
+
+3. Install and launch Sparrow.
+
+<Callout type="warn" title="Verify, then install">
+  If the signature check fails, stop. Don't install. Ask on Sparrow's
+  Telegram before doing anything else, this is not the moment to
+  give a random binary your seed words.
+</Callout>
+
+## Connect Sparrow to your node [#connect-sparrow-to-your-node]
+
+Sparrow's first-run wizard walks you straight into server
+configuration. If you're past that screen, you can reach the same
+dialog at any time with **Preferences → Server** (`Ctrl`-`P` on
+Windows/Linux, `Cmd`-`,` on macOS).
+
+1. Select the **Private Electrum** tab.
+2. **URL:** `raspibolt.local` (or your Pi's IP, e.g. `192.168.0.20`).
+3. **Port:** `50002`.
+4. Toggle **Use SSL** on.
+5. Click **Test Connection**. On first connect, Sparrow shows the
+   self-signed certificate from stunnel, read the fingerprint, then
+   **Accept**. The button turns green and reports something like
+   `Connected to electrs/0.11.1 on protocol version 1.4`.
+6. Close the dialog. Bottom-right of the main window, the server
+   icon should be solid blue, "Connected to ... at height ..." on
+   hover.
+
+<Callout type="info" title="Certificate warning is expected">
+  You saw it coming: the cert was minted by stunnel's openssl command
+  on the Pi, so no public CA has heard of it. The fingerprint you
+  accept now is the one Sparrow will expect on every future connect;
+  if it ever changes unexpectedly, something's off. That's the
+  security value of first-use trust.
+</Callout>
+
+### Troubleshooting a failed connect [#troubleshooting-a-failed-connect]
+
+* **Guest WiFi strikes again.** "Guest" or "isolated" WiFi networks
+  on most home routers block client-to-client traffic, which is
+  exactly what you need. Switch to the main WiFi.
+* **Stale certificate.** If you used Sparrow before connecting to
+  a *different* Electrum server at the same hostname, delete the
+  cached certs and try again:
+  * Windows: `C:\Users\<you>\AppData\Roaming\Sparrow\certs`
+  * macOS: `~/.sparrow/certs`
+  * Linux: `~/.sparrow/certs`
+* **Hostname resolution.** If `raspibolt.local` doesn't resolve,
+  use the Pi's IP address. Some Windows setups never enable mDNS by
+  default.
+
+## Core workflow [#core-workflow]
+
+Once you're connected, Sparrow is your window into the on-chain
+world. A quick tour:
+
+* **Create a wallet** → **New Wallet** → choose a name. For real
+  funds, pick **Connect Hardware Wallet** and let Sparrow import the
+  public keys (xpubs) from your device. The wallet is now watch-only:
+  it can see, but not spend.
+* **Receive:** go to the **Receive** tab, give the next address a
+  label, and share it. Label everything you can. Future-you will
+  thank present-you every time you look at a transaction history.
+* **Send:** pick the UTXOs you want to spend from the **UTXOs** tab
+  (this is coin control, an underrated privacy tool), draft the
+  transaction, and let your hardware wallet sign it. Sparrow shows
+  the exact bytes the device will sign, every fee, and every
+  change output. Nothing is hidden.
+* **PSBT:** if the signing device lives air-gapped (a Coldcard with
+  an SD card, for example), export a Partially Signed Bitcoin
+  Transaction, sign on the cold device, and import the signed PSBT
+  back. Same result; no USB.
+
+## Label your UTXOs [#label-your-utxos]
+
+This deserves its own beat. An unlabeled UTXO set is a chain-analysis
+paradise waiting to happen, you'll absent-mindedly combine a KYC
+exchange UTXO with one from a peer-to-peer trade and quietly doxx
+yourself. Labels in Sparrow persist across wallet opens, get
+exported with the wallet file, and show up in every coin-selection
+dialog. Use them.
+
+**Main takeaway:** with Sparrow talking to your node and a hardware
+wallet plugged in, you have a setup that sits cleanly at the top of
+the self-custody tree, private, verified, spendable, and yours.
+
+## (Optional) Connect over Tor [#optional-connect-over-tor]
+
+Travelling? Point Sparrow at the Tor hidden service you set up in
+[Electrum server](/docs/bitcoin/electrum-server#remote-access-over-tor-optional)
+so you can reach your node from anywhere.
+
+1. In **Preferences → Server → Private Electrum**, click **Edit
+   Existing Connection**.
+2. **URL:** your `.onion` address. &#x2A;*Port:** `50002`. &#x2A;*SSL:** on.
+3. Test. Sparrow's bundled Tor client handles the routing, you
+   don't need to run Tor on the laptop separately, as long as the
+   URL ends in `.onion`.
+
+## (Optional) Tor proxy for external services [#optional-tor-proxy-for-external-services]
+
+Sparrow occasionally reaches outside your wallet: exchange rate
+feeds, CoinJoin coordinators, block broadcasts through public APIs.
+By default those go over clearnet and leak your laptop's public IP
+to whoever runs the other end.
+
+If you're connecting to your node over a `.onion` already, Sparrow's
+built-in Tor proxy covers all of that automatically. Done.
+
+If you're connecting over the LAN (`raspibolt.local` or IP), tell
+Sparrow to route external traffic through Tor running on your laptop:
+
+1. Install and start Tor on the computer:
+   * macOS: `brew install tor && brew services start tor` (SOCKS
+     on port 9050), or run Tor Browser (SOCKS on port 9150).
+   * Linux: `sudo apt install tor && sudo systemctl enable --now tor`
+     (port 9050).
+   * Windows: install the Tor Browser or the Tor Expert Bundle; see
+     [Privacy](/docs/raspberry-pi/privacy#windows) for the specifics.
+2. In **Preferences → Server**, toggle **Use Proxy** on.
+3. **Proxy URL:** `127.0.0.1`. &#x2A;*Port:** `9050` (daemon) or `9150`
+   (Tor Browser).
+4. Test. The secondary icon at bottom-right now reads "External
+   Tor proxy enabled".
+
+## Updating Sparrow [#updating-sparrow]
+
+Sparrow checks for updates on launch and tells you when a new
+version is out. Download from the [releases page](https://sparrowwallet.com/download),
+verify the signature the same way you did at install, and replace
+the installed version. The wallet files live in your user profile
+and survive any reinstall.
+
+
+# Electrum server (/docs/bitcoin/electrum-server)
+
+
+
+Your own Bitcoin Core is great at answering questions about blocks.
+It's lousy at answering "what's the balance of this address?",
+because doing that means walking the entire chain every time.
+[Electrs](https://github.com/romanz/electrs) bridges the gap: it
+reads blocks from Bitcoin Core, builds an index keyed by address and
+script, and serves answers on the Electrum protocol that desktop
+wallets like Sparrow, the BitBoxApp, Electrum, or Specter already
+speak.
+
+This is why running Electrs next to your node matters for privacy.
+Without it, a wallet querying "public" Electrum servers tells
+strangers exactly which addresses belong to you. With Electrs local,
+the query never leaves the Pi.
+
+## What you'll do [#what-youll-do]
+
+* Install Rust so you can build Electrs, the project doesn't ship
+  prebuilt binaries for ARM.
+* Compile and install `electrs` 0.11.1.
+* Put it behind **stunnel** for TLS on the LAN.
+* Wire it up as a systemd service so it starts on boot and stays up.
+
+<Callout type="info" title="Expect a long initial index">
+  Hands-on setup is about 30 minutes. The slow part comes after: once
+  `electrs` starts, it reads the whole chain from `bitcoind` and builds
+  its own address index. On a Pi 5 with NVMe that's roughly **8 to 12
+  hours**; on a Pi 4 with USB SSD it can stretch past a day. The Pi
+  will feel sluggish while it runs, disk I/O is the bottleneck.
+  Nothing to babysit, check back the next day. Make sure Bitcoin Core
+  is fully synced (`verificationprogress` at 1.0) before you start,
+  otherwise `electrs` will happily index a moving target and thrash.
+</Callout>
+
+<Callout type="info" title="stunnel for raw TCP, Caddy for HTTP">
+  Earlier versions of this guide used NGINX's stream module to wrap
+  Electrum's plain-TCP protocol in TLS. In v4, HTTP services get
+  Caddy (you'll see that in the next page), but the Electrum protocol
+  isn't HTTP, it's JSON-RPC over a raw TCP socket. `stunnel` is the
+  time-tested, one-config-file tool for exactly that job.
+</Callout>
+
+## Build dependencies [#build-dependencies]
+
+Electrs is written in Rust and links against `clang` and `cmake` for
+its native dependencies (mostly RocksDB). Install them once:
+
+```bash
+sudo apt install cargo clang cmake build-essential libclang-dev pkg-config
+```
+
+Using Debian's packaged `cargo` avoids the extra step of installing
+`rustup` just for this one crate. The tradeoff is a slightly older
+Rust toolchain, still current enough for Electrs 0.11.1.
+
+## Build Electrs from source [#build-electrs-from-source]
+
+No binaries, no shortcuts: you build from a signed tag. That's the
+only way to know the thing running on your node matches what the
+maintainer, [Roman Zeyde](https://github.com/romanz), actually
+released.
+
+1. As `admin`, clone the repo at a specific tag:
+
+   ```bash
+   mkdir -p /home/admin/rust
+   cd /home/admin/rust
+   git clone --branch v0.11.1 https://github.com/romanz/electrs.git
+   cd electrs
+   ```
+
+2. Verify the release tag. Starting with v0.11.1 Roman signs tags
+   with SSH instead of PGP; he publishes the signing key in a
+   [dedicated repo](https://github.com/romanz/keys) whose `README.md`
+   is itself PGP-signed by his old GPG key, binding the transition.
+
+   Register his SSH signing key as a trusted signer for `git` and
+   point git's SSH-signature verification at that file:
+
+   ```bash
+   mkdir -p ~/.config/git
+   echo 'git@romanzey.de ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAZVq/3fgkildjN/MqEnhrP5550sDpFzGxMwevr5q/9w' \
+     > ~/.config/git/allowed_signers
+   git config --global gpg.format ssh
+   git config --global gpg.ssh.allowedSignersFile ~/.config/git/allowed_signers
+   git verify-tag v0.11.1
+   ```
+
+   Expected output:
+
+   ```text
+   Good "git" signature for git@romanzey.de with ED25519 key SHA256:GifMn7F2swVKyn6MewbQHrYCs4i/bPK7gnwxhuPz/YA
+   ```
+
+   The fingerprint `SHA256:GifMn7F2swVKyn6MewbQHrYCs4i/bPK7gnwxhuPz/YA`
+   is what matters; compare it against what you see in your terminal
+   and against the key published in Roman's
+   [keys repo](https://github.com/romanz/keys).
+
+3. Build it. On a Pi 5 this takes somewhere between 30 minutes and
+   an hour; the Pi will work hard, and that's fine:
+
+   ```bash
+   cargo build --locked --release
+   ```
+
+4. Install the resulting binary to `/usr/local/bin`:
+
+   ```bash
+   sudo install -m 0755 -o root -g root -t /usr/local/bin ./target/release/electrs
+   electrs --version
+   ```
+
+   Expected output:
+
+   ```text
+   v0.11.1
+   ```
+
+## Service user and data directory [#service-user-and-data-directory]
+
+Like `bitcoind`, Electrs runs as its own user with no shell password
+and a tidy data directory on the SSD.
+
+```bash
+sudo adduser --disabled-password --gecos "" electrs
+sudo adduser electrs bitcoin
+sudo mkdir /data/electrs
+sudo chown -R electrs:electrs /data/electrs
+```
+
+The `bitcoin` group membership is what lets Electrs read
+`/data/bitcoin/.cookie` for RPC auth.
+
+## Configuration [#configuration]
+
+1. Switch to the `electrs` user and open a fresh config:
+
+   ```bash
+   sudo su - electrs
+   nano /data/electrs/electrs.conf
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: electrs configuration
+   # /data/electrs/electrs.conf
+
+   # Bitcoin Core, uses the .cookie for auth (group-readable)
+   network = "bitcoin"
+   daemon_dir = "/data/bitcoin"
+   daemon_rpc_addr = "127.0.0.1:8332"
+   daemon_p2p_addr = "127.0.0.1:8333"
+
+   # Electrum protocol endpoint
+   electrum_rpc_addr = "127.0.0.1:50001"
+   db_dir = "/data/electrs/db"
+
+   # Logging
+   log_filters = "INFO"
+   timestamp = true
+   ```
+
+3. Do a first dry run to make sure the config is sane and Electrs
+   can talk to Bitcoin Core. It'll immediately start indexing, that
+   is expected and will take hours, but you only need to see the
+   first few lines of progress before you cancel:
+
+   ```bash
+   electrs --conf /data/electrs/electrs.conf
+   ```
+
+   Within a few seconds you should see lines like
+   `serving Electrum RPC on 127.0.0.1:50001` and
+   `indexing 2000 blocks: [1..2000]`. Good. Hit `Ctrl`-`C` and exit
+   back to `admin`:
+
+   ```bash
+   exit
+   ```
+
+## Systemd unit [#systemd-unit]
+
+1. As `admin`, create the unit file:
+
+   ```bash
+   sudo nano /etc/systemd/system/electrs.service
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: systemd unit for electrs
+   # /etc/systemd/system/electrs.service
+
+   [Unit]
+   Description=Electrs daemon
+   Wants=bitcoind.service
+   After=bitcoind.service
+
+   [Service]
+   ExecStart=/usr/local/bin/electrs --conf /data/electrs/electrs.conf
+
+   Type=simple
+   Restart=always
+   TimeoutSec=120
+   RestartSec=30
+   KillMode=process
+
+   User=electrs
+   RuntimeDirectory=electrs
+   RuntimeDirectoryMode=0710
+
+   # Hardening
+   PrivateTmp=true
+   PrivateDevices=true
+   MemoryDenyWriteExecute=true
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+3. Enable and start:
+
+   ```bash
+   sudo systemctl enable electrs
+   sudo systemctl start electrs
+   ```
+
+4. Watch it index in real time (`Ctrl`-`C` to exit):
+
+   ```bash
+   sudo journalctl -f -u electrs
+   ```
+
+<Callout type="warn" title="Electrs must finish indexing before you connect a wallet">
+  The first index pass walks the entire chain and builds the address
+  index on disk. On a Pi 5 with an SSD plan on **eight to twelve
+  hours**; on a Pi 4, closer to a day. Don't try to connect Sparrow
+  until the log quiets down and Electrs reports a caught-up tip,
+  pointing a wallet at an Electrum server that's still indexing will
+  just time out.
+</Callout>
+
+## TLS on the LAN with stunnel [#tls-on-the-lan-with-stunnel]
+
+Sparrow and other wallets connect to Electrum servers over TLS on
+port 50002. Electrs itself serves plaintext on 50001, which is
+fine *inside* the Pi, but you want the network traffic encrypted
+even on your home LAN. `stunnel` is a tiny, purpose-built proxy that
+wraps a plain TCP socket in TLS and has been doing exactly that for
+two decades.
+
+### Install stunnel [#install-stunnel]
+
+```bash
+sudo apt install stunnel4
+```
+
+### Mint a self-signed certificate [#mint-a-self-signed-certificate]
+
+stunnel doesn't do automatic CA issuance the way Caddy does for HTTP.
+You generate a self-signed certificate once and point the config at
+it. This takes a single command:
+
+```bash
+sudo openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+  -keyout /etc/stunnel/electrs.key \
+  -out /etc/stunnel/electrs.crt \
+  -subj "/CN=raspibolt.local"
+sudo chmod 600 /etc/stunnel/electrs.key
+```
+
+Ten-year validity is fine for a LAN certificate. Wallets will warn
+once that the certificate isn't from a public CA, you accept it,
+and they remember it from then on.
+
+### Configure stunnel [#configure-stunnel]
+
+1. Create the service config:
+
+   ```bash
+   sudo nano /etc/stunnel/electrs.conf
+   ```
+
+2. Paste:
+
+   ```ini
+   # RaspiBolt: stunnel TLS wrapper for Electrs
+   # /etc/stunnel/electrs.conf
+
+   pid = /var/run/stunnel4/electrs.pid
+
+   [electrs]
+   accept = 50002
+   connect = 127.0.0.1:50001
+   cert = /etc/stunnel/electrs.crt
+   key = /etc/stunnel/electrs.key
+   ```
+
+3. Enable and start:
+
+   ```bash
+   sudo systemctl enable stunnel4
+   sudo systemctl restart stunnel4
+   ```
+
+4. Open the firewall for Electrum over TLS:
+
+   ```bash
+   sudo ufw allow 50002/tcp comment 'Electrum SSL'
+   ```
+
+<Callout type="info" title="Self-signed is fine on the LAN">
+  Wallets will flag the certificate the first time, that's expected.
+  You accept it manually once (Sparrow does this well) or pin the
+  certificate fingerprint in the wallet config. Getting a public-CA
+  certificate would require a real domain name and DNS setup that most
+  home networks don't have. Internal CA plus first-use trust is the
+  sane default here.
+</Callout>
+
+**Main takeaway:** Electrs is indexing on `:50001`, stunnel wraps it
+in TLS on `:50002`, and the firewall lets LAN wallets in. The next
+page points Sparrow at it.
+
+## Remote access over Tor (optional) [#remote-access-over-tor-optional]
+
+You can reach your Electrum server from outside the home network by
+exposing it as a Tor hidden service. The wallet will need Tor
+running locally too.
+
+1. Add a stanza to `/etc/tor/torrc`:
+
+   ```bash
+   sudo nano /etc/tor/torrc
+   ```
+
+   ```text
+   # Hidden service: Electrum
+   HiddenServiceDir /var/lib/tor/hidden_service_electrs/
+   HiddenServiceVersion 3
+   HiddenServicePort 50002 127.0.0.1:50002
+   ```
+
+2. Reload Tor and read the generated `.onion` address:
+
+   ```bash
+   sudo systemctl reload tor
+   sudo cat /var/lib/tor/hidden_service_electrs/hostname
+   ```
+
+   Save that `abcdefg...xyz.onion` in your password manager alongside
+   the one you may already have for SSH. The desktop-wallet page
+   shows how to connect Sparrow to it.
+
+## Updating Electrs later [#updating-electrs-later]
+
+Upgrades follow the same pattern as the first build: check the
+[release notes](https://github.com/romanz/electrs/blob/master/RELEASE-NOTES.md),
+bump `0.11.1` in `lib/versions.ts`, then:
+
+```bash
+cd /home/admin/rust/electrs
+git clean -xfd
+git fetch
+git checkout v0.11.1
+git verify-tag v0.11.1
+cargo clean
+cargo build --locked --release
+sudo cp /usr/local/bin/electrs /usr/local/bin/electrs.old
+sudo install -m 0755 -o root -g root -t /usr/local/bin ./target/release/electrs
+sudo systemctl restart electrs
+```
+
+Keep the old binary around until the new one has served traffic
+for a few hours, rolling back is as simple as copying
+`electrs.old` back on top.
+
+
+# Overview (/docs/bitcoin)
+
+
+
+With the Pi hardened and Tor humming along, the fun part starts.
+You'll turn this neat little box into a first-class citizen of the
+Bitcoin network, a node that validates every block back to the
+genesis block, indexes every transaction for your own software and
+hardware wallets, and serves a private block explorer you never have
+to trust a third party for again.
+
+By the time you finish this section, you'll have:
+
+* **Bitcoin Core 30.2** running as a systemd
+  service, syncing the full blockchain, routing outbound through Tor.
+* **Electrs 0.11.1** indexing the chain for your desktop
+  wallet, no more leaking addresses to public Electrum servers.
+* **BTC RPC Explorer** giving you a private web UI for blocks,
+  transactions, mempool, and fee estimates.
+* **Sparrow Wallet** on your laptop, talking to your own Electrum
+  server over TLS, ready to drive a hardware wallet.
+
+## Prerequisites [#prerequisites]
+
+You've finished the [Raspberry Pi](/docs/raspberry-pi) section. The
+Pi is on the network, SSH is locked to keys, `ufw` and `fail2ban`
+are on watch, and the Tor daemon is listening on its control port
+ready for Bitcoin Core to plug in.
+
+If you want the big picture first, [Architecture](/docs/architecture)
+shows how Bitcoin Core, Electrs, and the block explorer fit together
+with the rest of the stack.
+
+## About the time commitment [#about-the-time-commitment]
+
+The install commands themselves take an afternoon. The blockchain
+sync is the long pole: on a Pi 5 with a decent SSD, the initial block
+download runs about two to five days, and Electrs then spends another
+half day to a day indexing on top of that. Neither step needs
+babysitting, kick it off, glance at the log once a day, and come
+back when it's done.
+
+## Pages in this section [#pages-in-this-section]
+
+1. [Bitcoin client](/docs/bitcoin/bitcoin-client), install Bitcoin
+   Core 30.2, verify the release, tune the config
+   for a Pi 5, start syncing.
+2. [Electrum server](/docs/bitcoin/electrum-server), compile
+   Electrs 0.11.1, index the chain, put Caddy in front
+   of it for TLS on the LAN.
+3. [Blockchain explorer](/docs/bitcoin/blockchain-explorer), install
+   BTC RPC Explorer on Node.js 22, proxy it through Caddy, view your
+   own chain.
+4. [Desktop wallet](/docs/bitcoin/desktop-wallet), point Sparrow
+   (or an alternative) at your Electrum server, drive a hardware
+   wallet, label UTXOs, take coin control seriously.
+
+When the dust settles, head to the [Lightning](/docs/lightning)
+section to turn this node into a Lightning node as well.
+
+
 # Overview (/docs/raspberry-pi)
 
 
@@ -5160,20 +5160,362 @@ fee or become a liquidity maker and earn sats for providing the
 inputs others use to mix.
 
 
-# Mempool (/docs/bonus/bitcoin/mempool)
+# Mempool Explorer (/docs/bonus/bitcoin/mempool)
 
 
 
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/bitcoin/mempool.md)
-  while we port it over.
+[Mempool](https://github.com/mempool/mempool) is the same open-source
+code that runs mempool.space, self-hosted on your own node. Transaction
+lookups, fee estimates, and UTXO queries stay on your LAN and never
+reach a third party.
+
+This guide builds Mempool v3.3.1 from source. The backend
+stores indexed data in MariaDB and serves the API on port 8999. Caddy
+puts the Angular frontend behind HTTPS on port 4080.
+
+## Requirements [#requirements]
+
+* [Electrum server](/docs/bitcoin/electrum-server) running (Electrs on port 50001)
+* [BTC RPC Explorer](/docs/bitcoin/blockchain-explorer) complete (Node.js 22 and Caddy already installed)
+* \~2 GB free on the SSD for build output and the MariaDB database
+
+## Create the user [#create-the-user]
+
+A dedicated system user limits the blast radius of any bug. Adding it
+to the `bitcoin` group lets Mempool authenticate to Bitcoin Core via
+the cookie file, the same approach BTC RPC Explorer uses.
+
+```bash
+sudo adduser --disabled-password --gecos "" mempool
+sudo adduser mempool bitcoin
+```
+
+## Install build dependencies [#install-build-dependencies]
+
+Mempool's backend includes a Rust-native block-template builder (GBT).
+Debian 13 Trixie ships Rust 1.85, which meets the 1.84 requirement:
+
+```bash
+sudo apt install rustc cargo
+```
+
+## Set up MariaDB [#set-up-mariadb]
+
+```bash
+sudo apt install mariadb-server
+```
+
+Open the MariaDB shell:
+
+```bash
+sudo mysql
+```
+
+Create the database and a dedicated user. Replace `YourPasswordM` with
+your &#x2A;*password \[M]** (new, used only for MariaDB here):
+
+```sql
+CREATE DATABASE mempool;
+GRANT ALL PRIVILEGES ON mempool.* TO 'mempool'@'localhost' IDENTIFIED BY 'YourPasswordM';
+EXIT;
+```
+
+## Install Mempool [#install-mempool]
+
+Switch to the `mempool` user:
+
+```bash
+sudo su - mempool
+```
+
+Clone and check out the release:
+
+```bash
+git clone https://github.com/mempool/mempool
+cd mempool
+git checkout v3.3.1
+```
+
+### Build the backend [#build-the-backend]
+
+```bash
+cd backend
+npm install --prod
+npm run build
+```
+
+<Callout type="info" title="Build time: 10-20 minutes">
+  `npm install` triggers a Rust compilation step before installing the
+  Node.js packages. On a Pi 5 that takes 5-10 minutes. The TypeScript
+  compilation that follows is quick.
 </Callout>
 
-[Mempool](https://github.com/mempool/mempool) is a self-hosted Bitcoin
-blockchain and mempool visualizer and explorer. Running it on your own
-node lets you look up your onchain transactions and estimate fees
-without leaking that activity to a third-party block explorer.
+### Configure the backend [#configure-the-backend]
+
+```bash
+nano mempool-config.json
+```
+
+Paste the following. Replace `YourPasswordM` with your password \[M]:
+
+```json
+{
+  "MEMPOOL": {
+    "NETWORK": "mainnet",
+    "BACKEND": "electrum",
+    "HTTP_PORT": 8999,
+    "SPAWN_CLUSTER_PROCS": 0,
+    "API_URL_PREFIX": "/api/v1/",
+    "POLL_RATE_MS": 2000,
+    "CACHE_DIR": "./cache",
+    "CACHE_ENABLED": true,
+    "CLEAR_PROTECTION_MINUTES": 20,
+    "RECOMMENDED_FEE_PERCENTILE": 50,
+    "BLOCK_WEIGHT_UNITS": 4000000,
+    "INITIAL_BLOCKS_AMOUNT": 8,
+    "MEMPOOL_BLOCKS_AMOUNT": 8,
+    "INDEXING_BLOCKS_AMOUNT": 0,
+    "AUDIT": false,
+    "RUST_GBT": true,
+    "CPFP_INDEXING": false,
+    "ALLOW_UNREACHABLE": true,
+    "PRICE_UPDATES_PER_HOUR": 1
+  },
+  "CORE_RPC": {
+    "HOST": "127.0.0.1",
+    "PORT": 8332,
+    "COOKIE": true,
+    "COOKIE_PATH": "/data/bitcoin/.cookie"
+  },
+  "ELECTRUM": {
+    "HOST": "127.0.0.1",
+    "PORT": 50001,
+    "TLS_ENABLED": false
+  },
+  "DATABASE": {
+    "ENABLED": true,
+    "HOST": "127.0.0.1",
+    "PORT": 3306,
+    "DATABASE": "mempool",
+    "USERNAME": "mempool",
+    "PASSWORD": "YourPasswordM"
+  },
+  "SOCKS5PROXY": {
+    "ENABLED": false
+  },
+  "STATISTICS": {
+    "ENABLED": true,
+    "TX_PER_SECOND_SAMPLE_PERIOD": 150
+  }
+}
+```
+
+`INDEXING_BLOCKS_AMOUNT: 0` disables historical address indexing on
+first run. Once the node is stable, raise it to `4320` (30 days) or
+`11000` (about 3 months) to unlock address balance history in the UI.
+Restart the service after changing it.
+
+### Build the frontend [#build-the-frontend]
+
+<Callout type="info" title="Build time: 20-30 minutes">
+  Run the following in a `tmux` or `screen` session so a dropped SSH
+  connection doesn't kill the build.
+</Callout>
+
+```bash
+cd ~/mempool/frontend
+npm install
+npm run generate-themes
+npm run generate-config
+npm run ng -- build --configuration production
+npm run sync-assets
+exit
+```
+
+The built frontend lands in
+`~/mempool/frontend/dist/mempool/browser`.
+
+<Callout type="info" title="Why not npm run build?">
+  The standard build script compiles all 33 translation locales, which
+  takes several hours on a Pi. The commands above build only the English
+  source locale and produce the same result.
+</Callout>
+
+## Autostart on boot [#autostart-on-boot]
+
+Back as user `admin`, create the service file:
+
+```bash
+sudo nano /etc/systemd/system/mempool.service
+```
+
+Paste:
+
+```ini
+# RaspiBolt: systemd unit for Mempool
+# /etc/systemd/system/mempool.service
+
+[Unit]
+Description=Mempool Bitcoin Explorer
+After=network.target bitcoind.service electrs.service mariadb.service
+
+[Service]
+WorkingDirectory=/home/mempool/mempool/backend
+ExecStart=/usr/bin/node --max-old-space-size=2048 dist/index.js
+User=mempool
+Restart=on-failure
+RestartSec=60
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+PrivateDevices=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl enable mempool
+sudo systemctl start mempool
+sudo journalctl -f -u mempool
+```
+
+Wait for a line containing `Listening on http://127.0.0.1:8999/`. On
+first start, Mempool syncs its database from Electrs and Bitcoin Core.
+Expect 30-60 minutes before fee charts and address lookups populate
+fully.
+
+Press `Ctrl`-`C` to stop following the log.
+
+## HTTPS on the LAN with Caddy [#https-on-the-lan-with-caddy]
+
+Caddy already runs from the BTC RPC Explorer setup. Add a Mempool
+block to the Caddyfile:
+
+1. Open the Caddyfile:
+
+   ```bash
+   sudo nano /etc/caddy/Caddyfile
+   ```
+
+2. Add the Mempool block after your existing blocks:
+
+   ```text
+   # Mempool Explorer
+   :4080 {
+     tls internal
+
+     handle /api/* {
+       reverse_proxy localhost:8999
+     }
+
+     handle {
+       root * /home/mempool/mempool/frontend/dist/mempool/browser
+       try_files {path} /index.html
+       file_server
+     }
+   }
+   ```
+
+   The `/api/*` block proxies API calls to the backend. Everything
+   else is served as a static file, falling back to `index.html` so
+   Angular's client-side routing works for deep links.
+
+3. Open the firewall and reload Caddy:
+
+   ```bash
+   sudo ufw allow 4080/tcp comment 'Mempool Explorer (Caddy)'
+   sudo systemctl reload caddy
+   ```
+
+4. Point your browser at `https://raspibolt.local:4080`. Accept the
+   one-time certificate warning.
+
+**Main takeaway:** you now have a private Bitcoin block explorer and
+mempool visualizer. The node's own Electrs index answers every query.
+
+## Upgrade [#upgrade]
+
+Read the [release notes](https://github.com/mempool/mempool/releases)
+before upgrading; some releases include a database migration.
+
+```bash
+sudo systemctl stop mempool
+sudo su - mempool
+cd ~/mempool
+git fetch
+git checkout v<new-version>
+```
+
+Rebuild the backend:
+
+```bash
+cd backend
+npm install --prod
+npm run build
+```
+
+Rebuild the frontend:
+
+```bash
+cd ~/mempool/frontend
+npm install
+npm run generate-themes
+npm run generate-config
+npm run ng -- build --configuration production
+npm run sync-assets
+exit
+```
+
+Start the service and confirm it's running:
+
+```bash
+sudo systemctl start mempool
+sudo journalctl -u mempool --since "5 minutes ago"
+```
+
+## Uninstall [#uninstall]
+
+```bash
+sudo systemctl stop mempool
+sudo systemctl disable mempool
+sudo rm /etc/systemd/system/mempool.service
+sudo ufw delete "allow 4080/tcp"
+```
+
+Remove the Mempool block from `/etc/caddy/Caddyfile`, then reload:
+
+```bash
+sudo systemctl reload caddy
+```
+
+Drop the database and user:
+
+```bash
+sudo mysql
+```
+
+```sql
+DROP DATABASE mempool;
+DROP USER 'mempool'@'localhost';
+EXIT;
+```
+
+If MariaDB is no longer needed:
+
+```bash
+sudo apt remove --purge mariadb-server mariadb-client
+sudo apt autoremove
+```
+
+Remove the user and home directory:
+
+```bash
+sudo deluser mempool
+sudo rm -rf /home/mempool
+```
 
 
 # Safu Ninja (/docs/bonus/bitcoin/safu-ninja)
