@@ -26,6 +26,11 @@ export default function DefaultSearchDialog(props: SharedProps) {
   const { locale } = useI18n(); // (optional) for i18n
   const { search, setSearch, query } = useDocsSearch({
     type: 'static',
+    // Fumadocs' static-search client defaults to '/api/search', which ignores
+    // Next.js' basePath. Under /RaspiBolt/ the browser would fetch the bare
+    // origin and 404. Prepend NEXT_PUBLIC_BASE_PATH so the URL lands on the
+    // emitted out/api/search file.
+    from: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/search`,
     initOrama,
     locale,
   });

@@ -57,6 +57,10 @@
   --color-rb-orange-500: hsl(25, 95%, 53%); /* accent */
   --color-rb-orange-600: hsl(22, 95%, 48%);
 
+  /* Raspberry Pi brand red (#C51A4A) — hardware callouts, Pi-specific accents */
+  --color-rb-raspberry: hsl(339, 76%, 44%);
+  --color-rb-raspberry-muted: hsl(339, 76%, 96%);
+
   /* Surface tints (warmer than pure gray) */
   --color-rb-surface-raised: hsl(35, 30%, 99%);
   --color-rb-surface-sunken: hsl(35, 20%, 94%);
@@ -90,4 +94,7 @@
 
   --color-rb-surface-raised: hsl(25, 20%, 10%);
   --color-rb-surface-sunken: hsl(25, 15%, 5%);
+
+  --color-rb-raspberry: hsl(339, 80%, 62%);
+  --color-rb-raspberry-muted: hsl(339, 30%, 14%);
 }

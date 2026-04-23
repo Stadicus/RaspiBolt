@@ -24,5 +24,13 @@ export default defineConfig({
   plugins: [lastModified()],
   mdxOptions: {
     remarkPlugins: (v) => [remarkVariables, remarkMdxMermaid, ...v],
+    rehypeCodeOptions: {
+      themes: {
+        light: 'vitesse-light',
+        dark: 'vitesse-dark',
+      },
+      // Inherit Fumadocs defaults for langs, langAlias, transformers (tabs,
+      // icon). Only the theme changes.
+    },
   },
 });

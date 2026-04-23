@@ -28,6 +28,100 @@ article h4 {
   letter-spacing: -0.015em;
 }
 
+/* Paragraph rhythm. Fumadocs prose defaults to ~1.25em between paragraphs,
+ * which reads airy on wide screens when content is command-heavy. Tighten
+ * a touch without collapsing the visual break between ideas.
+ */
+article p {
+  margin-block: 0.85em;
+  line-height: 1.6;
+}
+
+/* The first paragraph or list after a heading hugs it tightly; the breathing
+ * space lives above the heading instead of below.
+ */
+article :is(h2, h3, h4) + :is(p, ul, ol) {
+  margin-block-start: 0.15em;
+}
+
+/* H2 margin-block-end: Fumadocs default is ~1em which reads loose next to
+ * a hugging first paragraph. Tighten so the H2 feels like it belongs to
+ * the section underneath it, not floating above it.
+ */
+article h2 {
+  margin-block-end: 0.35em;
+}
+
+/* Docs page top-of-page spacing. The Fumadocs DocsPage article uses flex
+ * gap-4 between the breadcrumb, DocsTitle (h1), DocsDescription (p), and
+ * DocsBody. Default reads too loose; collapse to zero and zero out the
+ * intrinsic margins on h1/p so the breadcrumb, title, and description sit
+ * flush. Recover the visual break between lead-in and body with a hairline
+ * under the description.
+ */
+article#nd-page {
+  gap: 0;
+  padding-inline-start: 1rem; /* keep content at the same px-4 baseline as the header logo */
+}
+
+/* Fumadocs hardcodes md:pt-8 / xl:pt-14 on article#nd-page (the grid-area:main
+ * item). Override directly — NOT via :has() which would target the grid
+ * container and shift the sidebar down too.
+ */
+@media (min-width: 768px) {
+  article#nd-page {
+    padding-top: 1rem;
+  }
+}
+article#nd-page > h1 {
+  margin-block: 0;
+  line-height: 1.1;
+}
+
+/* Description becomes a visually separated lead-in: hairline rule below,
+ * tight spacing before the body starts. Overrides Fumadocs' mb-8 on the
+ * description <p> (class composition: mb-8 text-lg text-fd-muted-foreground).
+ */
+article#nd-page > p {
+  margin-block-start: 0.5rem;
+  margin-block-end: 1rem;
+  padding-block-end: 0.75rem;
+  border-block-end: 1px solid var(--color-fd-border);
+}
+
+/* Breadcrumb (first direct child, a nav) hugs the title. Fumadocs ships
+ * a default mb-3 on the breadcrumb plus the article's flex gap; override
+ * both so the breadcrumb sits directly above H1.
+ */
+article#nd-page > nav:first-child {
+  margin-block-end: 0 !important;
+  padding-block: 0;
+}
+article#nd-page > nav:first-child :is(ol, ul, li) {
+  margin-block: 0;
+  padding-block: 0;
+  line-height: 1.4;
+}
+
+/* List items tend to balloon in docs; keep them compact. */
+article :is(ul, ol) li {
+  margin-block: 0.25em;
+}
+article :is(ul, ol) li > p {
+  margin-block: 0.25em;
+}
+
+/* Prev / Next navigation cards at the bottom of every docs page. The
+ * Fumadocs default leaves them on the page background, which merges
+ * visually with surrounding prose. Lift to the card surface: pure white
+ * in light mode, subtle lift in dark mode. Selector matches the class
+ * composition Fumadocs emits for Footer items (rounded-lg border p-4
+ * text-sm) inside an article, which is unique to the prev/next cards.
+ */
+article#nd-page a.rounded-lg.border.p-4.text-sm {
+  background-color: var(--color-fd-card);
+}
+
 /* Inline code — amber tint so it stands out from body text */
 article :not(pre) > code {
   background-color: color-mix(in srgb, var(--color-fd-primary) 10%, transparent);
@@ -47,4 +141,68 @@ article a {
 }
 article a:hover {
   text-decoration-color: var(--color-fd-primary);
+}
+
+/* Table of contents: strengthen the active-section indicator so scroll-spy
+ * feels snappier. Fumadocs already swaps the background to amber on
+ * [data-active="true"]; we add a left-edge amber bar and a weight bump to
+ * make the active item pop out without needing peripheral vision.
+ */
+aside[class*='grid-area:toc'] a[data-active='true'] {
+  font-weight: 600;
+  position: relative;
+}
+aside[class*='grid-area:toc'] a[data-active='true']::before {
+  content: '';
+  position: absolute;
+  inset-block: 0.25rem;
+  inset-inline-start: -0.5rem;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--color-fd-primary);
+}
+
+/* Keyboard keys — subtle 3D depth via a darker border-bottom. Amber-tinted
+ * like the inline code but smaller and with a sans-mono font so "Ctrl+C"
+ * looks like a physical key, not a code token.
+ */
+article kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0.1rem 0.45rem;
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.82em;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  color: var(--color-fd-foreground);
+  background-color: color-mix(in srgb, var(--color-fd-card) 85%, var(--color-fd-primary) 15%);
+  border: 1px solid color-mix(in srgb, var(--color-fd-primary) 25%, var(--color-fd-border));
+  border-bottom-width: 2px;
+  border-radius: 0.3rem;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--color-fd-primary) 12%, transparent);
+  vertical-align: text-bottom;
+}
+
+/* ToC panel layout: grow the scroll area so the footer (Edit on GitHub +
+ * Last updated) is pinned to the visual bottom of the sticky panel instead
+ * of floating directly after the last ToC item.
+ */
+#nd-toc > div.overflow-auto {
+  flex: 1;
+}
+
+/* Nav height — Fumadocs hardcodes h-14 (3.5rem / 56px) on both the outer
+ * <header> and the inner <nav>. Override both to give the logo more room.
+ * Remove the max-width / auto-centering on the inner nav so the logo stays
+ * at x=px-4 (16px) matching the docs sidebar logo at all viewport widths.
+ */
+#nd-nav,
+#nd-nav nav {
+  height: 4.5rem;
+}
+
+#nd-nav nav {
+  max-width: none;
+  margin-inline: 0;
 }

@@ -17,7 +17,7 @@ export default function StyleguidePage() {
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-16 md:py-20">
       <header className="border-fd-border border-b pb-10">
-        <div className="text-xs font-semibold tracking-widest text-amber-600 uppercase dark:text-amber-400">
+        <div className="text-xs font-semibold tracking-widest text-amber-700 uppercase dark:text-amber-400">
           Internal, design reference
         </div>
         <h1 className="mt-3 text-4xl font-bold tracking-tight md:text-5xl">Styleguide</h1>
@@ -65,6 +65,31 @@ export default function StyleguidePage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold tracking-wide uppercase">Raspberry Pi brand</h3>
+          <p className="text-fd-muted-foreground mt-1 text-xs">
+            Official Raspberry Pi red (#C51A4A). Use for hardware-specific callouts and Pi badges.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="border-fd-border overflow-hidden rounded-lg border">
+              <div className="h-16" style={{ backgroundColor: 'var(--color-rb-raspberry)' }} />
+              <div className="px-3 py-2 text-xs">
+                <div className="font-mono font-semibold">raspberry</div>
+                <div className="text-fd-muted-foreground">rb-raspberry</div>
+              </div>
+            </div>
+            <div className="border-fd-border overflow-hidden rounded-lg border">
+              <div
+                className="h-16"
+                style={{ backgroundColor: 'var(--color-rb-raspberry-muted)' }}
+              />
+              <div className="px-3 py-2 text-xs">
+                <div className="font-mono font-semibold">raspberry-muted</div>
+                <div className="text-fd-muted-foreground">rb-raspberry-muted</div>
+              </div>
+            </div>
           </div>
         </div>
       </Section>
@@ -124,7 +149,7 @@ export default function StyleguidePage() {
           affordances.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-4">
-          <button className="group inline-flex items-center gap-2 rounded-xl bg-amber-500 px-6 py-3 font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:bg-amber-600 hover:shadow-amber-500/40">
+          <button className="group inline-flex items-center gap-2 rounded-xl bg-amber-500 px-6 py-3 font-semibold text-amber-950 shadow-lg shadow-amber-500/30 transition hover:bg-amber-400 hover:shadow-amber-500/40">
             Primary
             <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
           </button>
@@ -244,7 +269,7 @@ To                         Action      From
           Change a token, the whole site follows. Link:{' '}
           <Link
             href="/docs"
-            className="font-medium text-amber-700 underline underline-offset-2 hover:text-amber-600 dark:text-amber-300"
+            className="font-medium text-amber-700 underline underline-offset-2 hover:text-amber-700 dark:text-amber-300"
           >
             back to the guide
           </Link>
@@ -270,7 +295,7 @@ function Section({
 }) {
   return (
     <section id={id} className="border-fd-border border-b py-16">
-      <div className="text-xs font-semibold tracking-widest text-amber-600 uppercase dark:text-amber-400">
+      <div className="text-xs font-semibold tracking-widest text-amber-700 uppercase dark:text-amber-400">
         {label}
       </div>
       <h2 className="mt-3 text-2xl font-bold tracking-tight md:text-3xl">{title}</h2>

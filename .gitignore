@@ -27,9 +27,11 @@ secrets.*
 *.swo
 .DS_Store
 Thumbs.db
+*:Zone.Identifier
 
 # Vagrant
 testing/.vagrant/
 
 # Temp
 cast/tmp*
+lychee/
