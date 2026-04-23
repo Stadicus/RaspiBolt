@@ -2,6 +2,8 @@
 
 
 
+<Screenshot src="/images/backstory_stadicus-stage.webp" alt="Stadicus on stage in front of a pixel-art slide titled 'Realität'" float="right" />
+
 Hey, I'm [Stadicus](https://stadicus.com). I wrote the first version of
 this guide back in 2017, when Lightning was still pretty obscure, the
 mainnet wasn't even live yet, and running a node meant stringing
