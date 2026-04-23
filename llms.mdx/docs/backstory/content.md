@@ -66,11 +66,11 @@ issues list is where the guide gets better.
 ## The good old days [#the-good-old-days]
 
 The original goal of the RaspiBolt guide, back in 2017, was simply
-buying a [Blockaccino](https://vimeo.com/252693058). I used the
+buying a Blockaccino. I used the
 [Eclair](https://github.com/ACINQ/eclair) Lightning implementation
 on testnet, because mainnet wasn't running yet. Oh, how time flies.
 
-<Screenshot src="/images/backstory_blockaccino.png" alt="Paying for a coffee with Lightning in 2017 - the original Blockaccino" caption="The original goal: pay for a coffee over Lightning. Mainnet wasn't even live yet." />
+<VideoEmbed src="https://player.vimeo.com/video/252693058" title="Blockaccino - paying for a coffee with Lightning in 2017" caption="The original goal: pay for a coffee over Lightning. Mainnet wasn't even live yet." />
 
 ## A community project [#a-community-project]
 
