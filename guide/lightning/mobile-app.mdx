@@ -14,6 +14,13 @@ You'll set up a dedicated onion for LND's REST API, mint a QR
 code containing the onion URL, the port, and the admin macaroon,
 then scan it with Zeus.
 
+<Screenshot
+  src="/images/lightning_zeus.png"
+  alt="Zeus mobile wallet showing node balance, recent payments, and channel list"
+  caption="Zeus on iOS, connected to LND via a Tor hidden service"
+  stale
+/>
+
 ## Add a hidden service for LND REST
 
 Tor is already running on your Pi (set up in
@@ -79,10 +86,12 @@ containing the onion URL, the port, and the admin macaroon as hex.
 You'll paste that JSON into a QR code on the Pi, maximise the
 terminal window, and scan it with the phone.
 
-1. Install `qrencode`:
+1. Install `qrencode` for the QR render, and `xxd` for the macaroon
+   hex/base64 conversion below. On Debian 13, `xxd` is its own
+   package and isn't pulled in by default:
 
    ```bash
-   sudo apt install -y qrencode jq
+   sudo apt install -y qrencode jq xxd
    ```
 
 2. Grab the admin macaroon as uppercase hex:

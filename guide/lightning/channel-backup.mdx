@@ -87,7 +87,7 @@ that can read `channel.backup`. So the SSH key lives in
 2. Copy the public key into the remote host's
    `authorized_keys`. On the **remote host**, run:
 
-   ```bash
+   ```bash test:skip
    mkdir -p ~/.ssh
    chmod 700 ~/.ssh
    echo "ssh-ed25519 AAAA...your-pubkey-here... lnd@raspibolt" >> ~/.ssh/authorized_keys
@@ -98,7 +98,7 @@ that can read `channel.backup`. So the SSH key lives in
 3. Back on the **Pi** as `lnd`, do the first connection by hand
    so the remote host's fingerprint lands in `known_hosts`:
 
-   ```bash
+   ```bash test:skip
    ssh -i /home/lnd/.ssh/scb-backup backup@10.0.0.50 "echo ok"
    ```
 
@@ -225,7 +225,7 @@ activates a matching **service unit**. The two go together.
    change. `touch` updates the mtime, which is enough to fire
    `PathChanged`:
 
-   ```bash
+   ```bash test:skip
    sudo -u lnd touch /data/lnd/data/chain/bitcoin/mainnet/channel.backup
    ```
 
@@ -236,7 +236,7 @@ activates a matching **service unit**. The two go together.
 4. On the remote host, list the target directory. You should see
    the timestamped file plus `channel.backup.latest`:
 
-   ```bash
+   ```bash test:skip
    ls -la ~/raspibolt-scb/
    ```
 
@@ -264,13 +264,13 @@ level is: fresh Pi, same 24-word seed, latest SCB, pray.
 2. Pull `channel.backup.latest` from your remote host onto the
    new Pi:
 
-   ```bash
+   ```bash test:skip
    sudo -u lnd scp backup@10.0.0.50:/home/backup/raspibolt-scb/channel.backup.latest /tmp/channel.backup
    ```
 
 3. Start LND in the foreground as the `lnd` user:
 
-   ```bash
+   ```bash test:skip
    sudo su - lnd
    lnd
    ```
@@ -281,7 +281,7 @@ level is: fresh Pi, same 24-word seed, latest SCB, pray.
    10000 is plenty for a home node. The `--multi_file` flag
    tells `lncli create` to also accept an SCB:
 
-   ```bash
+   ```bash test:skip
    sudo su - lnd
    lncli create
    ```
@@ -326,7 +326,7 @@ close settles at the latest state with both peers agreeing,
 doesn't trigger commit-delay timeouts, and pays lower on-chain
 fees. Planning to retire the Pi or move to new hardware?
 
-```bash
+```bash test:skip
 lncli listchannels
 lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
 ```

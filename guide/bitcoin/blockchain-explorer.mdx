@@ -14,6 +14,13 @@ Bitcoin Core over RPC and to Electrs for address balance queries,
 gives you a clean browser interface for blocks, transactions,
 mempool, and fee estimates, and never phones home.
 
+<Screenshot
+  src="/images/bitcoin_btcrpcexplorer.png"
+  alt="BTC RPC Explorer homepage showing the latest block, mempool summary, and fee estimates"
+  caption="BTC RPC Explorer homepage, reading from your own Bitcoin Core + Electrs"
+  stale
+/>
+
 ## What you'll do
 
 - Install Node.js 22 LTS from NodeSource.
@@ -39,7 +46,7 @@ Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
 1. Add NodeSource and install:
 
    ```bash
-   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash,
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
    sudo apt install nodejs
    ```
 
@@ -48,6 +55,14 @@ Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
    ```bash
    node --version
    npm --version
+   ```
+
+   Expected output, a `v22.x` line from `node`, and a `10.x` or newer
+   line from `npm`:
+
+   ```text
+   v22.22.2
+   10.9.7
    ```
 
 ## Create the service user

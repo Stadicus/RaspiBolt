@@ -15,6 +15,13 @@ unprivileged user, point it at LND's macaroon and TLS certificate,
 and expose it behind Caddy at `https://rtl.raspibolt.local` on your
 LAN.
 
+<Screenshot
+  src="/images/lightning_rtl.png"
+  alt="Ride The Lightning dashboard showing channel list, balances, and routing stats"
+  caption="Ride The Lightning: channels, on-chain, routing, fees, all in one dashboard"
+  stale
+/>
+
 ## Install Node.js 22
 
 RTL is a Node.js application and needs a recent LTS runtime. The
@@ -41,8 +48,13 @@ Debian backports.
    npm --version
    ```
 
-   Expected output, a `v22.x` line from `node`, and an `11.x` or
-   newer line from `npm`.
+   Expected output, a `v22.x` line from `node`, and a `10.x` or
+   newer line from `npm`:
+
+   ```text
+   v22.22.2
+   10.9.7
+   ```
 
 <Callout type="info" title="If you already installed Node for the Bitcoin Explorer">
 BTC RPC Explorer uses the same NodeSource setup. If Node 22 is

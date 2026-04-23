@@ -185,13 +185,13 @@ Bring the Pi onto your tailnet. This prints a one-time URL,
 open it on any device, log in (a personal Tailscale account is
 free for up to 100 devices), and authorise the Pi:
 
-```bash
+```bash test:skip
 sudo tailscale up
 ```
 
 Confirm it's connected and read its tailnet IP:
 
-```bash
+```bash test:skip
 tailscale status
 tailscale ip -4
 ```
@@ -220,7 +220,7 @@ Install Tailscale on whatever device you want to SSH **from**:
 Log in with the same account. Once both devices are on the tailnet,
 SSH to the Pi's tailnet IP (or MagicDNS name if you enabled it):
 
-```bash
+```bash test:skip
 ssh admin@100.x.y.z
 ```
 
