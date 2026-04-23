@@ -21,6 +21,7 @@ export const versions = rawVersions as {
   lnd: string;
   electrs: string;
   rtl: string;
+  mempool: string;
 };
 
 export type VersionKey = keyof typeof versions;
