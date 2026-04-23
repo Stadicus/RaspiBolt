@@ -47,9 +47,6 @@ export function baseOptions(): BaseLayoutProps {
           <span className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-700 bg-clip-text text-base font-bold tracking-tight text-transparent dark:from-amber-300 dark:via-orange-400 dark:to-amber-500">
             RaspiBolt
           </span>
-          <span className="inline-flex h-5 shrink-0 items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 text-[0.625rem] leading-none font-semibold text-amber-900 uppercase dark:text-amber-300">
-            v4
-          </span>
         </span>
       ),
     },

@@ -35,7 +35,10 @@ export default function HomePage() {
         </div>
 
         <div className="mx-auto max-w-6xl px-6 py-24 md:py-32">
-          <h1 className="text-fd-foreground mt-6 text-5xl font-bold tracking-tight md:text-7xl">
+          <div className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold tracking-widest text-amber-700 uppercase dark:text-amber-300">
+            v4 &middot; April 2026
+          </div>
+          <h1 className="text-fd-foreground mt-4 text-5xl font-bold tracking-tight md:text-7xl">
             Build your own{' '}
             <span className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 bg-clip-text text-transparent">
               do-everything-yourself
