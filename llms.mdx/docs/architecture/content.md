@@ -80,6 +80,26 @@ answer.
 | [Caddy](/docs/bitcoin/blockchain-explorer)            | Reverse proxy. Puts web apps (RTL, BTC RPC Explorer) behind HTTPS with a single three-line config block per site.           |
 | stunnel                                               | Wraps plain TCP in TLS. Electrum wallets want an encrypted connection to Electrs, so stunnel handles the handshake.         |
 
+## Data and storage [#data-and-storage]
+
+Everything critical lives on the SSD, mounted at `/data`. Here are
+the key paths and their approximate footprints:
+
+| Path                                                  | What lives there                    | Size                     |
+| ----------------------------------------------------- | ----------------------------------- | ------------------------ |
+| `/data/bitcoin`                                       | Full blockchain and UTXO set        | \~700 GB, +7 GB/month    |
+| `/data/electrs`                                       | Address and transaction index       | \~70 GB                  |
+| `/data/lnd`                                           | Wallet, channels, macaroons, config | small, but irreplaceable |
+| `/data/lnd/data/chain/bitcoin/mainnet/channel.backup` | Static channel backup               | tiny: back it up off-Pi  |
+
+The SD card or eMMC holds the OS and application configs only. No
+Bitcoin data lives there.
+
+**Main takeaway:** if the SD card fails, your funds are safe on the
+SSD. If the SSD fails and you have the seed phrase and the latest
+`channel.backup`, you can recover funds from every channel. The
+[Channel backup](/docs/lightning/channel-backup) page sets that up.
+
 ## Reaching the Pi, and what the outside world sees [#reaching-the-pi-and-what-the-outside-world-sees]
 
 <Mermaid

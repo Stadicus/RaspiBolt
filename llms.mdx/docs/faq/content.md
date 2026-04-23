@@ -7,6 +7,16 @@ isn't here, the [Telegram group](https://t.me/raspibolt) and the
 [GitHub issues](https://github.com/raspibolt/raspibolt/issues) are
 the two places to ask.
 
+## How long does the initial blockchain sync take? [#how-long-does-the-initial-blockchain-sync-take]
+
+Expect 3-5 days on a Pi 5 with a fast SSD. The bottleneck is not
+download speed. Bitcoin Core verifies every digital signature in
+every transaction ever recorded, and that takes time. A slower
+machine or a spinning hard drive can push past a week.
+
+Once you're synced, catching up after a restart takes minutes, not
+days. Initial sync is a one-time cost.
+
 ## Can I get rich by routing Lightning payments? [#can-i-get-rich-by-routing-lightning-payments]
 
 Nobody really knows. Probably not. Routing fees on a well-placed
@@ -25,6 +35,14 @@ does the same.
 If you just need to copy files off the drive once, plugging it into
 another Linux box, or the Pi itself, is usually the path of least
 resistance.
+
+## How much disk space do I need? [#how-much-disk-space-do-i-need]
+
+A 2 TB SSD. The blockchain is around 700 GB as of 2026, growing
+roughly 7 GB per month. The Electrs index adds another \~70 GB, and
+the OS takes \~20 GB. A 1 TB drive is basically full on day one. See
+[Hardware](/docs/raspberry-pi/preparations) for what to buy and
+which SSD enclosure chipsets to avoid.
 
 ## Can I migrate an older RaspiBolt to v4? [#can-i-migrate-an-older-raspibolt-to-v4]
 
@@ -83,6 +101,29 @@ Bitcoin Core doesn't need a backup, it can download and verify the
 entire chain from scratch. That takes a few days on a Pi, so if you
 want to skip the resync, `rsync` the old `bitcoin` data directory
 across from the old drive before you point the new node at it.
+
+## Can I run this on something other than a Raspberry Pi 5? [#can-i-run-this-on-something-other-than-a-raspberry-pi-5]
+
+The guide targets the Pi 5. The Pi 4 with 8 GB RAM works but
+initial sync and Electrs indexing are noticeably slower. Any 64-bit
+ARM or x86 board running Debian 13 "Trixie" should be compatible,
+but is untested. The hard requirements are 8 GB RAM and a fast SSD.
+
+## My node was offline for a few days. What now? [#my-node-was-offline-for-a-few-days-what-now]
+
+Nothing special. Bitcoin Core picks up from where it stopped and
+catches up with the chain. LND reconnects to channel peers
+automatically. Give it 30-60 minutes after startup before worrying
+about anything. Lightning channels stay safe while your node is
+offline. They just can't route or send payments while it's down.
+
+## How do I update Bitcoin Core or LND? [#how-do-i-update-bitcoin-core-or-lnd]
+
+Follow the same install steps, starting from the download section.
+Stop the service, download and verify the new binary, replace it,
+and restart. Config files don't change between minor versions unless
+the release notes say so. Read the LND release notes before
+upgrading; it occasionally requires a database migration.
 
 ## What do all the Linux commands do? [#what-do-all-the-linux-commands-do]
 
