@@ -14,8 +14,10 @@ puts the Angular frontend behind HTTPS on port 4080.
 ## Requirements [#requirements]
 
 * [Electrum server](/docs/bitcoin/electrum-server) running (Electrs on port 50001)
-* [BTC RPC Explorer](/docs/bitcoin/blockchain-explorer) complete (Node.js 22 and Caddy already installed)
-* \~2 GB free on the SSD for build output and the MariaDB database
+* Node.js 22 installed (from the [BTC RPC Explorer guide](/docs/bitcoin/blockchain-explorer#install-nodejs-22-lts) or standalone via `nodesource.com`)
+* Caddy installed (from the same guide or standalone via `caddyserver.com`)
+* \~5 GB free on the SSD: build artefacts under `/home/mempool/` take 4-5 GB; the MariaDB database starts small but
+  grows to \~5 GB with full historical address indexing enabled
 
 ## Create the user [#create-the-user]
 
@@ -43,60 +45,34 @@ sudo apt install rustc cargo
 sudo apt install mariadb-server
 ```
 
-Open the MariaDB shell:
-
-```bash
-sudo mysql
-```
-
 Create the database and a dedicated user. Replace `YourPasswordM` with
 your &#x2A;*password \[M]** (new, used only for MariaDB here):
 
-```sql
+```bash
+sudo mysql <<'SQL'
 CREATE DATABASE mempool;
 GRANT ALL PRIVILEGES ON mempool.* TO 'mempool'@'localhost' IDENTIFIED BY 'YourPasswordM';
-EXIT;
+SQL
 ```
 
 ## Install Mempool [#install-mempool]
 
-Switch to the `mempool` user:
+Clone and check out the release as the `mempool` user:
 
 ```bash
-sudo su - mempool
-```
-
-Clone and check out the release:
-
-```bash
-git clone https://github.com/mempool/mempool
-cd mempool
+sudo -u mempool bash <<'EOF'
+git clone https://github.com/mempool/mempool ~/mempool
+cd ~/mempool
 git checkout v3.3.1
+EOF
 ```
-
-### Build the backend [#build-the-backend]
-
-```bash
-cd backend
-npm install --prod
-npm run build
-```
-
-<Callout type="info" title="Build time: 10-20 minutes">
-  `npm install` triggers a Rust compilation step before installing the
-  Node.js packages. On a Pi 5 that takes 5-10 minutes. The TypeScript
-  compilation that follows is quick.
-</Callout>
 
 ### Configure the backend [#configure-the-backend]
 
+Write the config file. Replace `YourPasswordM` with your &#x2A;*password \[M]**:
+
 ```bash
-nano mempool-config.json
-```
-
-Paste the following. Replace `YourPasswordM` with your password \[M]:
-
-```json
+sudo -u mempool tee /home/mempool/mempool/backend/mempool-config.json > /dev/null <<'CONFIG'
 {
   "MEMPOOL": {
     "NETWORK": "mainnet",
@@ -146,6 +122,7 @@ Paste the following. Replace `YourPasswordM` with your password \[M]:
     "TX_PER_SECOND_SAMPLE_PERIOD": 150
   }
 }
+CONFIG
 ```
 
 `INDEXING_BLOCKS_AMOUNT: 0` disables historical address indexing on
@@ -153,14 +130,31 @@ first run. Once the node is stable, raise it to `4320` (30 days) or
 `11000` (about 3 months) to unlock address balance history in the UI.
 Restart the service after changing it.
 
-### Build the frontend [#build-the-frontend]
+### Build the backend [#build-the-backend]
 
-<Callout type="info" title="Build time: 20-30 minutes">
-  Run the following in a `tmux` or `screen` session so a dropped SSH
-  connection doesn't kill the build.
+<Callout type="info" title="Build time: 10-20 minutes">
+  `npm install` triggers a Rust compilation before installing Node.js packages.
+  On a Pi 5 that takes 5-10 minutes. Run the commands in a `tmux` or
+  `screen` session.
 </Callout>
 
 ```bash
+sudo su - mempool
+cd ~/mempool/backend
+npm install --prod
+npm run build
+exit
+```
+
+### Build the frontend [#build-the-frontend]
+
+<Callout type="info" title="Build time: 20-30 minutes">
+  Run in the same `tmux` or `screen` session. A dropped SSH connection
+  would abort the build.
+</Callout>
+
+```bash
+sudo su - mempool
 cd ~/mempool/frontend
 npm install
 npm run generate-themes
@@ -170,8 +164,7 @@ npm run sync-assets
 exit
 ```
 
-The built frontend lands in
-`~/mempool/frontend/dist/mempool/browser`.
+The built frontend lands in `~/mempool/frontend/dist/mempool/browser`.
 
 <Callout type="info" title="Why not npm run build?">
   The standard build script compiles all 33 translation locales, which
@@ -229,8 +222,8 @@ Press `Ctrl`-`C` to stop following the log.
 
 ## HTTPS on the LAN with Caddy [#https-on-the-lan-with-caddy]
 
-Caddy already runs from the BTC RPC Explorer setup. Add a Mempool
-block to the Caddyfile:
+Add a Mempool block to the Caddyfile (create the file first if Caddy
+was not already installed from the BTC RPC Explorer guide):
 
 1. Open the Caddyfile:
 
@@ -281,23 +274,32 @@ before upgrading; some releases include a database migration.
 
 ```bash
 sudo systemctl stop mempool
+```
+
+Switch to the `mempool` user and update the source:
+
+```bash
 sudo su - mempool
 cd ~/mempool
 git fetch
 git checkout v<new-version>
+exit
 ```
 
 Rebuild the backend:
 
 ```bash
-cd backend
+sudo su - mempool
+cd ~/mempool/backend
 npm install --prod
 npm run build
+exit
 ```
 
 Rebuild the frontend:
 
 ```bash
+sudo su - mempool
 cd ~/mempool/frontend
 npm install
 npm run generate-themes
@@ -332,13 +334,10 @@ sudo systemctl reload caddy
 Drop the database and user:
 
 ```bash
-sudo mysql
-```
-
-```sql
+sudo mysql <<'SQL'
 DROP DATABASE mempool;
 DROP USER 'mempool'@'localhost';
-EXIT;
+SQL
 ```
 
 If MariaDB is no longer needed:

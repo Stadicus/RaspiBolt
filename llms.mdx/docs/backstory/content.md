@@ -2,8 +2,6 @@
 
 
 
-<Screenshot src="/images/backstory_stadicus-stage.webp" alt="Stadicus on stage in front of a pixel-art slide titled 'Realität'" float="right" />
-
 Hey, I'm [Stadicus](https://stadicus.com). I wrote the first version of
 this guide back in 2017, when Lightning was still pretty obscure, the
 mainnet wasn't even live yet, and running a node meant stringing
@@ -11,6 +9,8 @@ together a hundred half-documented commands you hoped someone on
 Reddit had gotten right. I love to tinker and build things, so I
 wrote down what worked, put it on Medium, and moved it to GitHub
 when it outgrew a single blog post.
+
+<Screenshot src="/images/backstory_stadicus-stage.webp" alt="Stadicus on stage in front of a pixel-art slide titled 'Realität'" float="right" />
 
 It hasn't been "my own" guide for a long time. Dozens of contributors
 have shaped it over the years. RaspiBolt is a community project now,
