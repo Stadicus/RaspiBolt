@@ -1,0 +1,44 @@
+# Lychee link-checker config.
+# Docs: https://lychee.cli.rs/
+
+# Treat these as success — covers transient rate-limit / hotlink-protection
+# responses that don't indicate an actually broken link.
+accept = ["200..=299", "301", "302", "303", "307", "308", "403", "429"]
+
+max_redirects = 5
+timeout = 20
+retry_wait_time = 2
+max_concurrency = 8
+
+# Skip loopback and private-range URLs (they appear as examples throughout
+# the guide: 127.0.0.1, 10.0.0.50, 192.168.x, raspibolt.local, etc.).
+exclude_loopback = true
+exclude_private = true
+
+# Explicit domain/path excludes:
+# - Social platforms aggressively bot-detect and 403/429 on lychee UA.
+# - Big shops throttle anything that looks scripted.
+# - tld-less hostnames are almost always local examples in the guide.
+exclude = [
+  # Social / chat
+  "https?://(www\\.)?reddit\\.com",
+  "https?://(www\\.)?(twitter|x)\\.com",
+  "https?://t\\.me",
+  "https?://nostr\\.band",
+  # Shops / commerce (frequent 429s)
+  "https?://(www\\.)?amazon\\.",
+  # Example placeholders in the guide
+  "\\.onion",
+  "raspibolt\\.local",
+  # Git SSH schema (not HTTP)
+  "^git@",
+  "^ssh://",
+]
+
+# Cache successful checks so a weekly cron doesn't re-hit every URL.
+cache = true
+max_cache_age = "7d"
+
+# Output: write a markdown report alongside CLI output.
+format = "markdown"
+output = "./lychee/out.md"

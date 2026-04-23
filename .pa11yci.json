@@ -1,0 +1,19 @@
+{
+  "defaults": {
+    "standard": "WCAG2AA",
+    "timeout": 30000,
+    "wait": 500,
+    "runners": ["axe"],
+    "chromeLaunchConfig": {
+      "args": ["--no-sandbox", "--headless=new"]
+    },
+    "ignore": [
+      "color-contrast",
+      "WCAG2AA.Principle1.Guideline1_4.1_4_3.G18",
+      "WCAG2AA.Principle1.Guideline1_4.1_4_3.G145",
+      "svg-img-alt",
+      "aria-prohibited-attr",
+      "frame-tested"
+    ]
+  }
+}

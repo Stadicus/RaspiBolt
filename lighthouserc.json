@@ -1,0 +1,38 @@
+{
+  "ci": {
+    "collect": {
+      "staticDistDir": "./out",
+      "url": [
+        "http://localhost:9999/",
+        "http://localhost:9999/docs/backstory",
+        "http://localhost:9999/docs/raspberry-pi/remote-access",
+        "http://localhost:9999/docs/bitcoin/bitcoin-client",
+        "http://localhost:9999/docs/lightning/lightning-client"
+      ],
+      "numberOfRuns": 1,
+      "settings": {
+        "chromeFlags": "--no-sandbox --headless=new",
+        "preset": "desktop"
+      }
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["warn", { "minScore": 0.85 }],
+        "categories:accessibility": ["warn", { "minScore": 0.9 }],
+        "categories:best-practices": ["warn", { "minScore": 0.9 }],
+        "categories:seo": ["warn", { "minScore": 0.9 }],
+        "color-contrast": "warn",
+        "heading-order": "warn",
+        "html-has-lang": "error",
+        "image-alt": "error",
+        "link-name": "error",
+        "meta-description": "error",
+        "meta-viewport": "error",
+        "uses-rel-preconnect": "off"
+      }
+    },
+    "upload": {
+      "target": "temporary-public-storage"
+    }
+  }
+}

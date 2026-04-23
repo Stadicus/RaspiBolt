@@ -13,6 +13,7 @@
 # Common abbreviations in configs
 "fo"        = "fo"      # e.g. "info" suffix
 "ot"        = "ot"
+"ba"        = "ba"      # git short-hash fragment (e.g. d9f25ba)
 
 # Networking
 "UPnP"      = "UPnP"    # Universal Plug and Play

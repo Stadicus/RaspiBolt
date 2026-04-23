@@ -1,0 +1,84 @@
+name: Full walk
+
+on:
+  workflow_dispatch:
+    inputs:
+      section:
+        description: 'Section to test (e.g. "bitcoin", "lightning") — blank = full core pipeline'
+        required: false
+        default: ''
+  pull_request:
+    types: [labeled]
+
+jobs:
+  walk:
+    name: Walk core pipeline
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-vm-test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Remove the label immediately so re-adding it later triggers a fresh run.
+      - name: Remove trigger label
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              name: 'run-vm-test',
+            }).catch(() => {});
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Start test VM
+        run: testing/vm/up.sh
+
+      - name: Run walk
+        id: walk
+        run: |
+          section="${{ inputs.section }}"
+          args=()
+          [[ -n "$section" ]] && args+=(--only "$section")
+          testing/run-walk.sh "${args[@]}"
+        continue-on-error: true
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: walk-report-${{ github.run_id }}
+          path: testing/runs/
+          retention-days: 14
+
+      - name: Post result to PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const runs = fs.readdirSync('testing/runs').sort().reverse();
+            if (!runs.length) return;
+            const summary = `testing/runs/${runs[0]}/SUMMARY.md`;
+            const body = fs.existsSync(summary)
+              ? fs.readFileSync(summary, 'utf8')
+              : '_No SUMMARY.md found — check the uploaded artifact._';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: `## Full walk result\n\n${body}`,
+            });
+
+      - name: Tear down VM
+        if: always()
+        run: testing/vm/down.sh

@@ -4,6 +4,7 @@ Build your own self-sovereign Bitcoin and Lightning node on a Raspberry Pi.
 
 - **Published guide:** <https://raspibolt.org>
 - **v4 staging preview:** <https://stadicus.github.io/RaspiBolt/> *(auto-deploys from `feature/v4-rewrite`)*
+- **Project history and decisions:** [`DECISIONS.md`](./DECISIONS.md) — why the stack, content, and tooling choices are what they are
 - **Open decisions & deferred work:** [`TODO.md`](./TODO.md)
 
 ---
@@ -131,8 +132,10 @@ lib/
   versions.ts         Derived filenames + URLs
   remark-variables.ts Build-time %token% replacement
 testing/
-  Vagrantfile         Debian 12 + RPi OS test VMs
-  test-runner.sh      Test suite (reads lib/versions.json)
+  vm/                 Debian 13 Trixie systemd-in-docker harness
+  extract/            MDX step extractor (parses guide/** shell blocks)
+  run-walk.sh         End-to-end autonomous walkthrough runner
+  REPORT.md           Latest walk report (per-page PASS/FAIL)
 ```
 
 ### Software versions (v4 target)

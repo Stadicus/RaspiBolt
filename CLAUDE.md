@@ -2,7 +2,7 @@
 
 RaspiBolt is a self-custody Bitcoin and Lightning full-node guide for technically capable hobbyists. People who can follow terminal commands but may not be Bitcoin experts. The guide walks through a complete setup on a Raspberry Pi, from flashing the OS to running Lightning payments.
 
-**v4 goal:** Rewrite the guide from Jekyll to Quarto. Modernize structure, update all software versions, and establish a sustainable, automatable publishing workflow. The feature branch `feature/v4-rewrite` auto-deploys to the staging preview at https://stadicus.github.io/RaspiBolt/.
+**v4 goal:** Rewrite the guide on Next.js + Fumadocs (MDX). Modernize structure, update all software versions, and establish a sustainable, automatable publishing workflow. The feature branch `feature/v4-rewrite` auto-deploys to the staging preview at https://stadicus.github.io/RaspiBolt/. The reasoning behind the stack (including why Quarto was tried and dropped) is captured in [`DECISIONS.md`](./DECISIONS.md).
 
 ---
 
@@ -25,7 +25,7 @@ No approval needed. Act and commit.
 1. Write, migrate, or rewrite any content section
 2. Make prose decisions: structure, wording, what to cut from v3, what to rewrite
 3. Commit and push to `feature/v4-rewrite`
-4. Update software versions in `guide/_variables.yml`
+4. Update software versions in `lib/versions.json`
 5. Fix lint/spell/markdownlint failures
 6. Update `testing/test-runner.sh` tests to match migrated content
 7. Add or update Vale vocabulary entries for new technical terms
@@ -35,8 +35,8 @@ No approval needed. Act and commit.
 Act autonomously, but report the outcome.
 
 1. Section complete (all pages of a section migrated and passing checks)
-2. Structural changes to the sidebar nav (`_quarto.yml`)
-3. New Quarto feature or shortcode type introduced
+2. Structural changes to the sidebar nav (`guide/**/meta.json`)
+3. New Fumadocs / MDX component introduced
 4. Software version bump (state old → new version)
 
 ### Level 2: Ask
@@ -195,7 +195,9 @@ Optimize PNG/JPG to <300 KB before committing (use `oxipng -o 4 file.png` or an 
 
 Before pushing, verify:
 
-- [ ] `pre-commit run --all-files`: all blocking hooks pass
+- [ ] `pre-commit run --all-files`: blocking hooks pass (includes Prettier auto-format)
+- [ ] `npm run lint`: ESLint clean (CI-only hook, not in pre-commit)
+- [ ] `npm run types:check`: TypeScript clean
 - [ ] `npm run build`: site builds without errors
 - [ ] All version references use `%versions.X%` / `%files.X%` / `%urls.X%` tokens
 - [ ] Internal links use `/docs/...` paths (no file extensions)
@@ -227,8 +229,10 @@ lib/                       Plugins & helpers
 source.config.ts           Fumadocs MDX collection config
 next.config.mjs            Next.js config (static export)
 testing/
-  Vagrantfile              Debian 12 + RPi OS proxy test VMs
-  test-runner.sh           Test suite (reads versions from lib/versions.ts)
+  vm/                      Debian 13 Trixie systemd-in-docker harness
+  extract/                 MDX step extractor (parses guide/** shell blocks)
+  run-walk.sh              Autonomous end-to-end walkthrough runner
+  REPORT.md                Latest walk report (per-page PASS/FAIL)
 scripts/
   setup-dev.sh             One-time dev environment setup
 .github/workflows/

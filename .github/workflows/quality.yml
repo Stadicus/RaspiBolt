@@ -1,0 +1,85 @@
+name: Quality
+
+on:
+  push:
+    branches: [feature/v4-rewrite]
+    paths:
+      - 'guide/**'
+      - 'src/**'
+      - 'lib/**'
+      - '.github/workflows/quality.yml'
+      - 'lighthouserc.json'
+      - '.pa11yci.json'
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build site
+        run: npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: ''
+
+      - name: Run Lighthouse CI
+        run: |
+          npm install -g @lhci/cli@0.15.x
+          lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: .lighthouseci/
+          if-no-files-found: ignore
+
+  a11y:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build site
+        run: npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: ''
+
+      - name: Serve built site
+        run: npx -y serve out -p 9999 &
+
+      - name: Wait for server
+        run: npx -y wait-on http://localhost:9999 --timeout 30000
+
+      - name: Run axe-core via pa11y-ci
+        run: |
+          npm install -g pa11y-ci@4
+          pa11y-ci \
+            --config .pa11yci.json \
+            http://localhost:9999/ \
+            http://localhost:9999/docs/backstory \
+            http://localhost:9999/docs/raspberry-pi/remote-access \
+            http://localhost:9999/docs/bitcoin/bitcoin-client

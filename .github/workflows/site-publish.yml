@@ -1,5 +1,10 @@
 name: Publish site (v4)
 
+# Fires on pushes to feature/v4-rewrite (direct commits and merged
+# PRs land as push events on the target branch, so merging a
+# sub-branch into feature/v4-rewrite automatically triggers a
+# deploy). Master is intentionally excluded to keep the v3 Jekyll
+# site live on raspibolt.org untouched.
 on:
   push:
     branches: [feature/v4-rewrite]

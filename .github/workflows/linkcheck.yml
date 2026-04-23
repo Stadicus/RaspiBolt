@@ -1,0 +1,57 @@
+name: Link check
+
+on:
+  push:
+    branches: [feature/v4-rewrite]
+    paths:
+      - 'guide/**'
+      - 'src/**'
+      - 'lib/**'
+      - '.github/workflows/linkcheck.yml'
+      - 'lychee.toml'
+  pull_request:
+    branches: [master]
+  schedule:
+    # Weekly external-link rot check (Mondays 06:00 UTC)
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  linkcheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build site
+        run: npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: /RaspiBolt
+
+      - name: Link check (lychee)
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # Point at built HTML. External URLs get checked too; github.com
+          # lands on the authenticated path so we don't hit 60/h unauth.
+          args: >-
+            --config lychee.toml
+            './out/**/*.html'
+          fail: ${{ github.event_name == 'pull_request' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lychee-report
+          path: lychee/out.md
+          if-no-files-found: ignore

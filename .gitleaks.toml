@@ -13,8 +13,11 @@ regexTarget = "line"
 regexes = [
   # Example Bitcoin addresses / keys used as documentation examples
   '''bcrt1q[a-z0-9]{38,58}''',
-  # GitHub Actions variable syntax — not real secrets
+  # GitHub Actions variable syntax, not real secrets
   '''\$\{\{\s*secrets\.[A-Z_]+\s*\}\}''',
+  # Published SSH-signature fingerprints referenced in guide prose for
+  # reader verification (e.g. Electrs upstream signing key).
+  '''SHA256:[A-Za-z0-9+/]{43}''',
 ]
 paths = [
   # Legacy Jekyll content kept as reference — not deployed
