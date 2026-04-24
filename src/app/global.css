@@ -62,6 +62,7 @@ article h2 {
 article#nd-page {
   gap: 0;
   padding-inline-start: 1rem; /* keep content at the same px-4 baseline as the header logo */
+  padding-top: 0.75rem;
 }
 
 /* Fumadocs hardcodes md:pt-8 / xl:pt-14 on article#nd-page (the grid-area:main
@@ -70,7 +71,7 @@ article#nd-page {
  */
 @media (min-width: 768px) {
   article#nd-page {
-    padding-top: 1rem;
+    padding-top: 1.25rem;
   }
 }
 article#nd-page > h1 {
