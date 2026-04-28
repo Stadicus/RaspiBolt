@@ -8,9 +8,17 @@ Add new items at the top of the relevant section. Strike items by moving them to
 
 ## Open decisions
 
-### v3 archive
+(none)
 
-`master` branch still serves the live guide at <https://raspibolt.org>. Needs a permanent archive URL before v4 goes live. Options: keep `master` branch as archive, redirect to `v3.raspibolt.org`, or similar. Decide with upstream maintainers.
+---
+
+## Pre-cutover checklist
+
+Items to clear before merging v4 to upstream `raspibolt/raspibolt` master:
+
+- **Tag `v3-final`** on the last v3 commit of upstream master, push, then merge v4. Decision posted as upstream issue (draft at `/tmp/v3-archive-issue.md`, posting blocked by 366-day PAT org policy).
+- **Add "Looking for v3?" pointer** in v4 footer linking to `https://github.com/raspibolt/raspibolt/tree/v3-final`.
+- **Test Tailscale install flow on a Pi 5 Trixie** (see Deferred content below).
 
 ---
 
