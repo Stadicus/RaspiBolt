@@ -318,13 +318,33 @@ The things worth keeping from an older node:
   and, in the worst case, lost funds.
 </Callout>
 
-On the old node:
+On the old node, create a mount point for the thumb drive:
 
 ```bash
 sudo mkdir /mnt/thumbdrive
+```
+
+List block devices to find which one is the thumb drive:
+
+```bash
 lsblk -pli
+```
+
+Mount it (adjust `/dev/sdb1` to match what `lsblk` showed):
+
+```bash
 sudo mount /dev/sdb1 /mnt/thumbdrive/
+```
+
+Copy the LND data directory across, preserving ownership and resuming on interruption:
+
+```bash
 sudo rsync -rhvPog --append-verify /data/lnd /mnt/thumbdrive/
+```
+
+Rename the original on the old node so it can never start again by accident:
+
+```bash
 sudo mv /data/lnd /data/lnd-do-not-start-again
 ```
 
@@ -334,14 +354,35 @@ against anything going wrong with the full directory restore.
 ### Restore onto the new node [#restore-onto-the-new-node]
 
 Finish the v4 setup through the Lightning section, but **don't
-create a wallet** when LND first starts. Stop LND, mount the
-thumb drive, and copy the backup into place:
+create a wallet** when LND first starts.
+
+Stop LND on the new node:
 
 ```bash
 sudo systemctl stop lnd
+```
+
+Mount the thumb drive:
+
+```bash
 sudo mount /dev/sdb1 /mnt/thumbdrive/
+```
+
+Copy the LND data directory into place:
+
+```bash
 sudo rsync -rhvPog --append-verify /mnt/thumbdrive/lnd /data/
+```
+
+Fix ownership so the `lnd` user owns its data:
+
+```bash
 sudo chown -R lnd:lnd /data/lnd
+```
+
+Start LND back up:
+
+```bash
 sudo systemctl start lnd
 ```
 
@@ -424,7 +465,9 @@ IP. Every consumer router can do this; the menu is usually called
 "DHCP reservations" or "static leases".
 
 If your router can't, configure the address directly on the Pi via
-NetworkManager (the default on Debian 13 "Trixie"):
+NetworkManager (the default on Debian 13 "Trixie").
+
+Set the static address, gateway, DNS, and method on the wired connection:
 
 ```bash
 sudo nmcli connection modify "Wired connection 1" \
@@ -432,6 +475,11 @@ sudo nmcli connection modify "Wired connection 1" \
   ipv4.gateway 192.168.1.1 \
   ipv4.dns 192.168.1.1 \
   ipv4.method manual
+```
+
+Bring the connection back up to apply the change:
+
+```bash
 sudo nmcli connection up "Wired connection 1"
 ```
 
@@ -642,10 +690,15 @@ If something's wrong with `bitcoind`, the quickest way to see what
 is to run it in the foreground, attached to a terminal, where the
 startup output is visible.
 
-Stop the service and start it manually:
+Stop the service:
 
 ```bash
 sudo systemctl stop bitcoind
+```
+
+Start it manually in the foreground:
+
+```bash
 sudo -u bitcoin bitcoind -printtoconsole
 ```
 
@@ -679,8 +732,15 @@ sudo -u bitcoin tail -f /data/bitcoin/debug.log
 Same approach: stop the service, run in the foreground, read the
 startup output carefully.
 
+Stop the service:
+
 ```bash
 sudo systemctl stop lnd
+```
+
+Run LND in the foreground as the `lnd` user:
+
+```bash
 sudo -u lnd lnd
 ```
 
@@ -747,7 +807,7 @@ with it, start it, check in once a day, come back when
 `verificationprogress` is a hair below 1.
 
 <Callout type="info" title="Pi 4 owners">
-  A Pi 4 with 8 GB RAM still gets there, just slower, plan for five to
+  A Pi 4 with 8 GB RAM still gets there, slower, plan for five to
   seven days for the initial sync and keep the `dbcache` a little lower
   (see below). Anything less than 8 GB of RAM will struggle once LND
   and Electrs join the party; upgrade if you can.
@@ -759,11 +819,16 @@ with it, start it, check in once a day, come back when
 sudo, if something ever does manage to break out of the daemon, it
 lands in a sandbox, not on your `admin` account.
 
-1. Create the user and add `admin` to its group so you can read its
-   files without juggling `sudo`:
+1. Create the user without a password and with no GECOS chatter:
 
    ```bash
    sudo adduser --gecos "" --disabled-password bitcoin
+   ```
+
+   Add `admin` to the new `bitcoin` group so you can read its files
+   without juggling `sudo`:
+
+   ```bash
    sudo adduser admin bitcoin
    ```
 
@@ -782,10 +847,28 @@ separate mount you carved out in [System configuration](/docs/raspberry-pi/syste
 A symlink from `/home/bitcoin/.bitcoin` to that location keeps the
 defaults happy while the actual data sits on the fast disk.
 
+Create the data directory on the SSD:
+
 ```bash
 sudo mkdir /data/bitcoin
+```
+
+Give the `bitcoin` user ownership:
+
+```bash
 sudo chown bitcoin:bitcoin /data/bitcoin
+```
+
+Symlink the default location into the SSD path:
+
+```bash
 sudo ln -s /data/bitcoin /home/bitcoin/.bitcoin
+```
+
+Fix the symlink's own ownership (the `-h` flag changes the link, not
+its target):
+
+```bash
 sudo chown -h bitcoin:bitcoin /home/bitcoin/.bitcoin
 ```
 
@@ -795,13 +878,27 @@ Never run a Bitcoin binary you haven't verified. The point of a
 full node is to trust your own software, which means the software
 has to be what the developers actually signed.
 
-1. As `admin`, drop into `/tmp` (cleared on every reboot) and pull
-   the binary, the checksum file, and the signature file:
+1. As `admin`, drop into `/tmp` (cleared on every reboot):
 
    ```bash
    cd /tmp
+   ```
+
+   Download the binary:
+
+   ```bash
    wget https://bitcoincore.org/bin/bitcoin-core-30.2/bitcoin-30.2-aarch64-linux-gnu.tar.gz
+   ```
+
+   Download the checksum file:
+
+   ```bash
    wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS
+   ```
+
+   Download the signature on the checksum file:
+
+   ```bash
    wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS.asc
    ```
 
@@ -853,11 +950,21 @@ has to be what the developers actually signed.
 
 ## Install the binaries [#install-the-binaries]
 
-If checksum and signature are happy, extract and install:
+If checksum and signature are happy, extract the archive:
 
 ```bash
 tar -xvf bitcoin-30.2-aarch64-linux-gnu.tar.gz
+```
+
+Install the binaries into `/usr/local/bin`, owned by root:
+
+```bash
 sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-30.2/bin/*
+```
+
+Confirm the right version is on `PATH`:
+
+```bash
 bitcoin-cli --version
 ```
 
@@ -875,11 +982,21 @@ through its RPC interface. Bitcoin Core doesn't store the password
 in plaintext, it stores a salted hash. A short Python script ships
 with the source tree to generate the config line.
 
-1. As the `bitcoin` user, fetch the helper script:
+1. Switch to the `bitcoin` user:
 
    ```bash
    sudo su - bitcoin
+   ```
+
+   Move into the data directory:
+
+   ```bash
    cd .bitcoin
+   ```
+
+   Fetch the helper script:
+
+   ```bash
    wget https://raw.githubusercontent.com/bitcoin/bitcoin/master/share/rpcauth/rpcauth.py
    ```
 
@@ -1029,10 +1146,15 @@ failure with a sensible backoff.
    WantedBy=multi-user.target
    ```
 
-4. Enable it (so it runs on boot) and start it now:
+4. Enable it so it runs on boot:
 
    ```bash
    sudo systemctl enable bitcoind.service
+   ```
+
+   Start it now:
+
+   ```bash
    sudo systemctl start bitcoind.service
    ```
 
@@ -1132,9 +1254,21 @@ before a particular Bitcoin block. Your node can verify those proofs
 against its own chain data, so you're not trusting a third-party
 timestamp server.
 
+Install Python and its build helpers:
+
 ```bash
 sudo apt install python3 python3-dev python3-pip python3-setuptools python3-wheel
+```
+
+Install the OpenTimestamps client from pip:
+
+```bash
 sudo pip3 install opentimestamps-client --break-system-packages
+```
+
+Confirm it landed:
+
+```bash
 ots --version
 ```
 
@@ -1152,15 +1286,53 @@ The `30.2` token and its derived URL in
 `lib/versions.ts` are the single source of truth in this guide; bump
 that file when a new version lands.
 
+Drop into `/tmp`:
+
 ```bash
 cd /tmp
+```
+
+Download the new release, checksum file, and signature:
+
+```bash
 wget https://bitcoincore.org/bin/bitcoin-core-30.2/bitcoin-30.2-aarch64-linux-gnu.tar.gz
+```
+
+```bash
 wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS
+```
+
+```bash
 wget https://bitcoincore.org/bin/bitcoin-core-30.2/SHA256SUMS.asc
+```
+
+Verify the checksum:
+
+```bash
 sha256sum --ignore-missing --check SHA256SUMS
+```
+
+Verify the GPG signatures on the checksum file:
+
+```bash
 gpg --verify SHA256SUMS.asc
+```
+
+Extract the archive:
+
+```bash
 tar -xvf bitcoin-30.2-aarch64-linux-gnu.tar.gz
+```
+
+Install the new binaries:
+
+```bash
 sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-30.2/bin/*
+```
+
+Restart the daemon to pick up the new binary:
+
+```bash
 sudo systemctl restart bitcoind
 ```
 
@@ -1205,32 +1377,44 @@ it), and Electrs is indexed and answering queries.
 Debian 13 ships Node.js 20; BTC RPC Explorer is tested against
 Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
 
-1. Add NodeSource and install:
+1. Add the NodeSource repository:
 
    ```bash
    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+   ```
+
+   Install Node.js:
+
+   ```bash
    sudo apt install nodejs
    ```
 
-2. Confirm the version:
+2. Confirm the runtime version:
 
    ```bash
    node --version
+   ```
+
+   Confirm the package manager version:
+
+   ```bash
    npm --version
    ```
 
-   Expected output, a `v22.x` line from `node`, and a `10.x` or newer
-   line from `npm`:
-
-   ```text
-   v22.22.2
-   10.9.7
-   ```
+   Expected output is a `v22.x` line from `node`, and a `10.x` or
+   newer line from `npm`.
 
 ## Create the service user [#create-the-service-user]
 
+Create the service user:
+
 ```bash
 sudo adduser --disabled-password --gecos "" btcrpcexplorer
+```
+
+Add it to the `bitcoin` group:
+
+```bash
 sudo adduser btcrpcexplorer bitcoin
 ```
 
@@ -1239,21 +1423,40 @@ The `bitcoin` group membership is what lets the explorer read
 
 ## Install BTC RPC Explorer [#install-btc-rpc-explorer]
 
-1. Switch to the new user and fetch the latest release tag:
+1. Switch to the new user:
 
    ```bash
    sudo su - btcrpcexplorer
+   ```
+
+   Resolve the latest release tag into a `VERSION` shell variable:
+
+   ```bash
    VERSION=$(curl -sL https://api.github.com/repos/janoside/btc-rpc-explorer/releases/latest | grep -oP '"tag_name": "v\K[^"]+')
+   ```
+
+   Echo it back so you can sanity-check what you're about to install:
+
+   ```bash
    echo "Installing BTC RPC Explorer $VERSION"
    ```
 
-2. Clone the source and pull in dependencies with npm. Expect this
-   to take 10 to 20 minutes on a Pi 5, a lot of native modules get
-   built from source:
+2. Clone the source for that tag:
 
    ```bash
    git clone --branch "v$VERSION" https://github.com/janoside/btc-rpc-explorer.git
+   ```
+
+   Move into the new directory:
+
+   ```bash
    cd btc-rpc-explorer
+   ```
+
+   Pull in dependencies with npm. Expect this to take 10 to 20
+   minutes on a Pi 5, a lot of native modules get built from source:
+
+   ```bash
    npm install
    ```
 
@@ -1271,10 +1474,15 @@ The explorer reads its config from `.env` in the install directory.
 A heavily commented template ships with the source. You only need to
 change a handful of lines.
 
-1. Copy the template and open it:
+1. Copy the template:
 
    ```bash
    cp .env-sample .env
+   ```
+
+   Open it for editing:
+
+   ```bash
    nano .env
    ```
 
@@ -1336,11 +1544,23 @@ change a handful of lines.
 ## Run it once by hand [#run-it-once-by-hand]
 
 Before handing it to systemd, start it manually to shake out any
-config mistakes:
+config mistakes.
+
+Switch to the service user:
 
 ```bash
 sudo su - btcrpcexplorer
+```
+
+Move into the install directory:
+
+```bash
 cd ~/btc-rpc-explorer
+```
+
+Run the app in the foreground:
+
+```bash
 npm run start
 ```
 
@@ -1389,16 +1609,24 @@ exit
    WantedBy=multi-user.target
    ```
 
-3. Enable and start:
+3. Enable the service so it starts on boot:
 
    ```bash
    sudo systemctl enable btcrpcexplorer
-   sudo systemctl start btcrpcexplorer
-   sudo journalctl -f -u btcrpcexplorer
    ```
 
-   Watch the log for a "listening on port 3002" line, then
-   `Ctrl`-`C`.
+   Start it now:
+
+   ```bash
+   sudo systemctl start btcrpcexplorer
+   ```
+
+   Follow the log and watch for a "listening on port 3002" line,
+   then `Ctrl`-`C`:
+
+   ```bash
+   sudo journalctl -f -u btcrpcexplorer
+   ```
 
 ## HTTPS on the LAN with Caddy [#https-on-the-lan-with-caddy]
 
@@ -1409,16 +1637,43 @@ and issues itself a certificate from its own internal CA.
 
 ### Install Caddy [#install-caddy]
 
-The official Caddy apt repo is the right source. One-time setup:
+The official Caddy apt repo is the right source. One-time setup.
+
+Install the helper packages needed to add a third-party repo over HTTPS:
 
 ```bash
 sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+```
+
+Import Caddy's signing key into a dedicated keyring:
+
+```bash
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
   | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+```
+
+Add the Caddy stable apt source:
+
+```bash
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
   | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+```
+
+Refresh the package index:
+
+```bash
 sudo apt update
+```
+
+Install Caddy:
+
+```bash
 sudo apt install caddy
+```
+
+Confirm it landed:
+
+```bash
 caddy version
 ```
 
@@ -1446,10 +1701,15 @@ caddy version
    `tls internal` tells Caddy to mint and manage a self-signed
    certificate from its own CA, no public DNS needed.
 
-3. Reload Caddy and open the firewall:
+3. Reload Caddy so it picks up the new config:
 
    ```bash
    sudo systemctl reload caddy
+   ```
+
+   Open the firewall port:
+
+   ```bash
    sudo ufw allow 4000/tcp comment 'BTC RPC Explorer (Caddy)'
    ```
 
@@ -1488,10 +1748,15 @@ as a Tor hidden service and visit it through Tor Browser.
    HiddenServicePort 80 127.0.0.1:3002
    ```
 
-2. Reload Tor and fetch the `.onion`:
+2. Reload Tor so it picks up the new hidden service:
 
    ```bash
    sudo systemctl reload tor
+   ```
+
+   Fetch the generated `.onion` address:
+
+   ```bash
    sudo cat /var/lib/tor/hidden_service_btcrpcexplorer/hostname
    ```
 
@@ -1501,23 +1766,63 @@ as a Tor hidden service and visit it through Tor Browser.
 
 ## Updating BTC RPC Explorer later [#updating-btc-rpc-explorer-later]
 
-1. Stop the service and switch to the app user:
+1. Stop the service:
 
    ```bash
    sudo systemctl stop btcrpcexplorer
+   ```
+
+   Switch to the app user:
+
+   ```bash
    sudo su - btcrpcexplorer
    ```
 
-2. Update to the latest tag:
+2. Move into the install directory:
 
    ```bash
    cd ~/btc-rpc-explorer
+   ```
+
+   Fetch the latest tags:
+
+   ```bash
    git fetch
+   ```
+
+   Discard any local changes:
+
+   ```bash
    git reset --hard HEAD
+   ```
+
+   Resolve the newest version tag into a shell variable:
+
+   ```bash
    VERSION=$(git tag | sort --version-sort | tail -n 1)
+   ```
+
+   Sanity-check the resolved version:
+
+   ```bash
    echo "Upgrading to $VERSION"
+   ```
+
+   Check out that tag:
+
+   ```bash
    git checkout "$VERSION"
+   ```
+
+   Refresh dependencies:
+
+   ```bash
    npm install
+   ```
+
+   Drop back to `admin`:
+
+   ```bash
    exit
    ```
 
@@ -1805,12 +2110,27 @@ only way to know the thing running on your node matches what the
 maintainer, [Roman Zeyde](https://github.com/romanz), actually
 released.
 
-1. As `admin`, clone the repo at a specific tag:
+1. As `admin`, create a workspace for Rust builds:
 
    ```bash
    mkdir -p /home/admin/rust
+   ```
+
+   Move into it:
+
+   ```bash
    cd /home/admin/rust
+   ```
+
+   Clone the repo at a specific tag:
+
+   ```bash
    git clone --branch v0.11.1 https://github.com/romanz/electrs.git
+   ```
+
+   Move into the source tree:
+
+   ```bash
    cd electrs
    ```
 
@@ -1820,14 +2140,36 @@ released.
    is itself PGP-signed by his old GPG key, binding the transition.
 
    Register his SSH signing key as a trusted signer for `git` and
-   point git's SSH-signature verification at that file:
+   point git's SSH-signature verification at that file.
+
+   Make sure the git config directory exists:
 
    ```bash
    mkdir -p ~/.config/git
+   ```
+
+   Write Roman's SSH key into the `allowed_signers` file:
+
+   ```bash
    echo 'git@romanzey.de ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAZVq/3fgkildjN/MqEnhrP5550sDpFzGxMwevr5q/9w' \
      > ~/.config/git/allowed_signers
+   ```
+
+   Tell git to verify signatures via SSH:
+
+   ```bash
    git config --global gpg.format ssh
+   ```
+
+   Point git at the trusted-signers file:
+
+   ```bash
    git config --global gpg.ssh.allowedSignersFile ~/.config/git/allowed_signers
+   ```
+
+   Verify the release tag:
+
+   ```bash
    git verify-tag v0.11.1
    ```
 
@@ -1853,6 +2195,11 @@ released.
 
    ```bash
    sudo install -m 0755 -o root -g root -t /usr/local/bin ./target/release/electrs
+   ```
+
+   Confirm the right version is on `PATH`:
+
+   ```bash
    electrs --version
    ```
 
@@ -1867,10 +2214,27 @@ released.
 Like `bitcoind`, Electrs runs as its own user with no shell password
 and a tidy data directory on the SSD.
 
+Create the service user:
+
 ```bash
 sudo adduser --disabled-password --gecos "" electrs
+```
+
+Add it to the `bitcoin` group:
+
+```bash
 sudo adduser electrs bitcoin
+```
+
+Create the data directory on the SSD:
+
+```bash
 sudo mkdir /data/electrs
+```
+
+Give the `electrs` user ownership:
+
+```bash
 sudo chown -R electrs:electrs /data/electrs
 ```
 
@@ -1879,10 +2243,15 @@ The `bitcoin` group membership is what lets Electrs read
 
 ## Configuration [#configuration]
 
-1. Switch to the `electrs` user and open a fresh config:
+1. Switch to the `electrs` user:
 
    ```bash
    sudo su - electrs
+   ```
+
+   Open a fresh config file:
+
+   ```bash
    nano /data/electrs/electrs.conf
    ```
 
@@ -1966,10 +2335,15 @@ The `bitcoin` group membership is what lets Electrs read
    WantedBy=multi-user.target
    ```
 
-3. Enable and start:
+3. Enable the service so it starts on boot:
 
    ```bash
    sudo systemctl enable electrs
+   ```
+
+   Start it now:
+
+   ```bash
    sudo systemctl start electrs
    ```
 
@@ -2009,11 +2383,18 @@ stunnel doesn't do automatic CA issuance the way Caddy does for HTTP.
 You generate a self-signed certificate once and point the config at
 it. This takes a single command:
 
+Generate a 10-year self-signed certificate and matching key:
+
 ```bash
 sudo openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
   -keyout /etc/stunnel/electrs.key \
   -out /etc/stunnel/electrs.crt \
   -subj "/CN=raspibolt.local"
+```
+
+Lock the private key down so only root can read it:
+
+```bash
 sudo chmod 600 /etc/stunnel/electrs.key
 ```
 
@@ -2044,10 +2425,15 @@ and they remember it from then on.
    key = /etc/stunnel/electrs.key
    ```
 
-3. Enable and start:
+3. Enable the service so it starts on boot:
 
    ```bash
    sudo systemctl enable stunnel4
+   ```
+
+   Restart it to load the new config:
+
+   ```bash
    sudo systemctl restart stunnel4
    ```
 
@@ -2089,10 +2475,15 @@ running locally too.
    HiddenServicePort 50002 127.0.0.1:50002
    ```
 
-2. Reload Tor and read the generated `.onion` address:
+2. Reload Tor so it picks up the new hidden service:
 
    ```bash
    sudo systemctl reload tor
+   ```
+
+   Read the generated `.onion` address:
+
+   ```bash
    sudo cat /var/lib/tor/hidden_service_electrs/hostname
    ```
 
@@ -2104,18 +2495,65 @@ running locally too.
 
 Upgrades follow the same pattern as the first build: check the
 [release notes](https://github.com/romanz/electrs/blob/master/RELEASE-NOTES.md),
-bump `0.11.1` in `lib/versions.ts`, then:
+bump `0.11.1` in `lib/versions.ts`, then walk the steps below.
+
+Move into the source tree:
 
 ```bash
 cd /home/admin/rust/electrs
+```
+
+Discard any build artefacts and stray files:
+
+```bash
 git clean -xfd
+```
+
+Fetch the latest tags from upstream:
+
+```bash
 git fetch
+```
+
+Check out the new release tag:
+
+```bash
 git checkout v0.11.1
+```
+
+Verify the signature on that tag:
+
+```bash
 git verify-tag v0.11.1
+```
+
+Clear cargo's build cache so the new version compiles cleanly:
+
+```bash
 cargo clean
+```
+
+Build the new binary:
+
+```bash
 cargo build --locked --release
+```
+
+Keep a copy of the currently installed binary as a rollback option:
+
+```bash
 sudo cp /usr/local/bin/electrs /usr/local/bin/electrs.old
+```
+
+Install the freshly built binary on top:
+
+```bash
 sudo install -m 0755 -o root -g root -t /usr/local/bin ./target/release/electrs
+```
+
+Restart the service to pick up the new binary:
+
+```bash
 sudo systemctl restart electrs
 ```
 
@@ -2293,23 +2731,54 @@ The sync has to run as the `lnd` user, that's the only account
 that can read `channel.backup`. So the SSH key lives in
 `/home/lnd/.ssh/`.
 
-1. As `admin`, become `lnd` and generate a key (no passphrase,
-   a passphrase would defeat unattended sync):
+1. As `admin`, become `lnd`:
 
    ```bash
    sudo su - lnd
+   ```
+
+   Generate a key (no passphrase, a passphrase would defeat unattended sync):
+
+   ```bash
    ssh-keygen -t ed25519 -f /home/lnd/.ssh/scb-backup -N ""
+   ```
+
+   Print the public key so you can copy it to the remote host:
+
+   ```bash
    cat /home/lnd/.ssh/scb-backup.pub
    ```
 
 2. Copy the public key into the remote host's
-   `authorized_keys`. On the **remote host**, run:
+   `authorized_keys`. On the **remote host**, create the `.ssh`
+   directory if it doesn't exist:
 
    ```bash test:skip
    mkdir -p ~/.ssh
+   ```
+
+   Lock it down:
+
+   ```bash test:skip
    chmod 700 ~/.ssh
+   ```
+
+   Append the public key (replace the placeholder with what `cat`
+   printed on the Pi):
+
+   ```bash test:skip
    echo "ssh-ed25519 AAAA...your-pubkey-here... lnd@raspibolt" >> ~/.ssh/authorized_keys
+   ```
+
+   Lock the file down:
+
+   ```bash test:skip
    chmod 600 ~/.ssh/authorized_keys
+   ```
+
+   Create the target directory for the backups:
+
+   ```bash test:skip
    mkdir -p ~/raspibolt-scb
    ```
 
@@ -2422,12 +2891,29 @@ activates a matching **service unit**. The two go together.
    ```
 
 3. Enable and start the **path** unit (not the service, systemd
-   activates the service for you on file change):
+   activates the service for you on file change).
+
+   Reload systemd so it sees the new units:
 
    ```bash
    sudo systemctl daemon-reload
+   ```
+
+   Enable the path unit so it starts on boot:
+
+   ```bash
    sudo systemctl enable scb-sync.path
+   ```
+
+   Start it now:
+
+   ```bash
    sudo systemctl start scb-sync.path
+   ```
+
+   Confirm it's active:
+
+   ```bash
    sudo systemctl status scb-sync.path
    ```
 
@@ -2486,10 +2972,15 @@ level is: fresh Pi, same 24-word seed, latest SCB, pray.
    sudo -u lnd scp backup@10.0.0.50:/home/backup/raspibolt-scb/channel.backup.latest /tmp/channel.backup
    ```
 
-3. Start LND in the foreground as the `lnd` user:
+3. Switch to the `lnd` user:
 
    ```bash test:skip
    sudo su - lnd
+   ```
+
+   Start LND in the foreground:
+
+   ```bash test:skip
    lnd
    ```
 
@@ -2497,10 +2988,17 @@ level is: fresh Pi, same 24-word seed, latest SCB, pray.
    **with** the SCB attached. The `--recovery_window` tells LND
    how many derivation steps to scan for on-chain activity,
    10000 is plenty for a home node. The `--multi_file` flag
-   tells `lncli create` to also accept an SCB:
+   tells `lncli create` to also accept an SCB.
+
+   Switch to the `lnd` user:
 
    ```bash test:skip
    sudo su - lnd
+   ```
+
+   Launch the wallet-creation flow:
+
+   ```bash test:skip
    lncli create
    ```
 
@@ -2544,8 +3042,15 @@ close settles at the latest state with both peers agreeing,
 doesn't trigger commit-delay timeouts, and pays lower on-chain
 fees. Planning to retire the Pi or move to new hardware?
 
+List your open channels:
+
 ```bash test:skip
 lncli listchannels
+```
+
+Close each one cooperatively (substitute the funding outpoint and a sensible fee rate):
+
+```bash test:skip
 lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
 ```
 
@@ -2669,36 +3174,65 @@ own unprivileged system user and a dedicated data directory on the
 SSD, with the home-directory `~/.lnd` path symlinked to the real
 location. Same pattern you used for `bitcoind`.
 
-1. As user `admin`, create the `lnd` user. Give it group membership
-   in `bitcoin` (so it can read `bitcoin.conf` for auto-RPC) and in
-   `debian-tor` (so it can read Tor's cookie file for the control
-   port):
+1. As user `admin`, create the `lnd` user:
 
    ```bash
    sudo adduser --disabled-password --gecos "" lnd
+   ```
+
+   Add it to the `bitcoin` and `debian-tor` groups so it can read
+   `bitcoin.conf` for auto-RPC and Tor's cookie file for the control
+   port:
+
+   ```bash
    sudo usermod -a -G bitcoin,debian-tor lnd
+   ```
+
+   Put `admin` into the `lnd` group so you can run `lncli` later
+   without `sudo`:
+
+   ```bash
    sudo adduser admin lnd
    ```
 
-   The third command puts `admin` into the `lnd` group so you can
-   run `lncli` later without `sudo`.
-
-2. Create the data directory on the SSD and hand it to `lnd`:
+2. Create the data directory on the SSD:
 
    ```bash
    sudo mkdir /data/lnd
+   ```
+
+   Hand it to `lnd`:
+
+   ```bash
    sudo chown -R lnd:lnd /data/lnd
    ```
 
-3. Open a shell as the `lnd` user and set up the symlinks. LND
-   looks for its data in `~/.lnd` by default; pointing that at
-   `/data/lnd` means every tool and tutorial that assumes the
-   default path still works:
+3. Open a shell as the `lnd` user. LND looks for its data in
+   `~/.lnd` by default; pointing that at `/data/lnd` means every
+   tool and tutorial that assumes the default path still works.
+
+   Switch users:
 
    ```bash
    sudo su - lnd
+   ```
+
+   Symlink the LND default path to the SSD location:
+
+   ```bash
    ln -s /data/lnd /home/lnd/.lnd
+   ```
+
+   Symlink the Bitcoin data directory too, so LND can find the
+   cookie file at the default path:
+
+   ```bash
    ln -s /data/bitcoin /home/lnd/.bitcoin
+   ```
+
+   List the home directory to confirm both links resolved:
+
+   ```bash
    ls -la
    ```
 
@@ -2712,13 +3246,27 @@ LND ships as a statically linked binary tarball. You'll download
 it, verify the SHA256 checksum, verify the GPG signature on the
 manifest, and only then copy the binaries into place.
 
-1. Still as the `lnd` user, grab the release archive, the manifest,
-   and the maintainer's signature:
+1. Still as the `lnd` user, drop into `/tmp`:
 
    ```bash
    cd /tmp
+   ```
+
+   Download the release archive:
+
+   ```bash
    wget https://github.com/lightningnetwork/lnd/releases/download/v0.20.1-beta/lnd-linux-arm64-v0.20.1-beta.tar.gz
+   ```
+
+   Download the manifest:
+
+   ```bash
    wget https://github.com/lightningnetwork/lnd/releases/download/v0.20.1-beta/manifest-v0.20.1-beta.txt
+   ```
+
+   Download the maintainer's signature on the manifest:
+
+   ```bash
    wget https://github.com/lightningnetwork/lnd/releases/download/v0.20.1-beta/manifest-roasbeef-v0.20.1-beta.sig
    ```
 
@@ -2780,12 +3328,27 @@ LND releases are signed by Olaoluwa "Roasbeef" Osuntokun.
    exit
    ```
 
-2. Extract the archive and install both binaries:
+2. Drop into `/tmp`:
 
    ```bash
    cd /tmp
+   ```
+
+   Extract the archive:
+
+   ```bash
    tar -xvf lnd-linux-arm64-v0.20.1-beta.tar.gz
+   ```
+
+   Install both binaries into `/usr/local/bin`, owned by root:
+
+   ```bash
    sudo install -m 0755 -o root -g root -t /usr/local/bin lnd-linux-arm64-v0.20.1-beta/*
+   ```
+
+   Confirm the right version is on `PATH`:
+
+   ```bash
    lnd --version
    ```
 
@@ -2810,11 +3373,16 @@ every startup. You have two options:
 
 This guide picks auto-unlock. You can switch later.
 
-1. Become `lnd` again and create the password file, then enter
-   password `[C]` (one you haven't used anywhere else):
+1. Become `lnd` again:
 
    ```bash
    sudo su - lnd
+   ```
+
+   Create the password file and enter password `[C]` (one you
+   haven't used anywhere else):
+
+   ```bash
    nano /data/lnd/password.txt
    ```
 
@@ -2927,10 +3495,15 @@ For actual operation you want it under systemd so it starts at
 boot, restarts after crashes, and only comes up after `bitcoind`
 is ready.
 
-1. Back as user `admin`, create the unit file:
+1. Drop back to `admin`:
 
    ```bash
    exit
+   ```
+
+   Create the unit file:
+
+   ```bash
    sudo nano /etc/systemd/system/lnd.service
    ```
 
@@ -2966,11 +3539,16 @@ is ready.
    WantedBy=multi-user.target
    ```
 
-3. Reload systemd and enable the unit (don't start it yet, you
-   need to create the wallet first):
+3. Reload systemd so it sees the new unit:
 
    ```bash
    sudo systemctl daemon-reload
+   ```
+
+   Enable the unit (don't start it yet, you need to create the
+   wallet first):
+
+   ```bash
    sudo systemctl enable lnd
    ```
 
@@ -2980,10 +3558,15 @@ First start is a two-window affair: LND runs in the foreground in
 one SSH session and waits for you to create the wallet from a
 second session.
 
-1. Still as `admin`, start LND in the foreground:
+1. Still as `admin`, switch to the `lnd` user:
 
    ```bash test:skip
    sudo su - lnd
+   ```
+
+   Start LND in the foreground:
+
+   ```bash test:skip
    lnd
    ```
 
@@ -2991,11 +3574,15 @@ second session.
    `Waiting for wallet encryption password. Use 'lncli create' ...`.
    Leave this window open.
 
-2. Open a **second** SSH session to the Pi. Become the `lnd` user
-   and run `lncli create`:
+2. Open a **second** SSH session to the Pi. Become the `lnd` user:
 
    ```bash test:skip
    sudo su - lnd
+   ```
+
+   Launch the wallet-creation flow:
+
+   ```bash test:skip
    lncli create
    ```
 
@@ -3032,10 +3619,15 @@ second session.
   Seriously. Write it down before you go any further.
 </Callout>
 
-Once the seed is recorded, exit the second session:
+Once the seed is recorded, leave the `lnd` shell:
 
 ```bash
 exit
+```
+
+Close the SSH session:
+
+```bash
 exit
 ```
 
@@ -3057,10 +3649,15 @@ exit
 
 ## Start LND under systemd [#start-lnd-under-systemd]
 
-1. As `admin`, start the service and follow the log:
+1. As `admin`, start the service:
 
    ```bash
    sudo systemctl start lnd
+   ```
+
+   Follow the log:
+
+   ```bash
    sudo journalctl -f -u lnd
    ```
 
@@ -3069,19 +3666,36 @@ exit
 
 2. Let `admin` use `lncli` without `sudo`. The `admin` user is
    already in the `lnd` group; the remaining permissions tweak is
-   a symlink and a group-read bit on the macaroon:
+   a symlink and a group-read bit on the macaroon.
+
+   Symlink the LND data directory into `admin`'s home:
 
    ```bash test:skip
    ln -s /data/lnd /home/admin/.lnd
+   ```
+
+   Add group-execute on every directory under `data/`:
+
+   ```bash test:skip
    sudo chmod -R g+X /data/lnd/data/
+   ```
+
+   Add group-read on the admin macaroon:
+
+   ```bash test:skip
    sudo chmod g+r /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon
    ```
 
 3. Log out of the SSH session and log back in, group membership
-   only takes effect on a fresh shell. Then smoke-test:
+   only takes effect on a fresh shell. Then smoke-test the node:
 
    ```bash test:skip
    lncli getinfo
+   ```
+
+   And the wider network view:
+
+   ```bash test:skip
    lncli getnetworkinfo
    ```
 
@@ -3113,12 +3727,18 @@ working Lightning node.
 2. Pick a well-connected peer from
    [Amboss](https://amboss.space) or
    [LightningNetwork+](https://lightningnetwork.plus). A peer URI
-   looks like `pubkey@host:port`. Connect, then open a channel
-   (capacity in sats, explicit fee in sats/vByte from
-   [mempool.space](https://mempool.space)):
+   looks like `pubkey@host:port`.
+
+   Connect to the peer:
 
    ```bash test:skip
    lncli connect 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f@34.239.230.56:9735
+   ```
+
+   Open a channel (capacity in sats, explicit fee in sats/vByte from
+   [mempool.space](https://mempool.space)):
+
+   ```bash test:skip
    lncli openchannel --sat_per_vbyte 8 03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f 200000 0
    ```
 
@@ -3145,11 +3765,23 @@ cheaters, and because the worst a watchtower can do is fail
 silently, you don't have to trust them.
 
 You already enabled `wtclient.active=true` in `lnd.conf`. Add a
-tower or two:
+tower or two.
+
+Switch to the `lnd` user:
 
 ```bash test:skip
 sudo su - lnd
+```
+
+Add a watchtower (substitute the URI of your choice):
+
+```bash test:skip
 lncli wtclient add 023bad37e5795654cecc69b43599da8bd5789ac633c098253f60494bde602b60bf@iiu4epqzm6cydqhezueenccjlyzrqeruntlzbx47mlmdgfwgtrll66qd.onion:9911
+```
+
+List the configured towers to confirm:
+
+```bash test:skip
 lncli wtclient towers
 ```
 
@@ -3245,10 +3877,15 @@ for LND's REST API is three more lines in `torrc`.
    HiddenServicePort 8080 127.0.0.1:8080
    ```
 
-3. Reload Tor and read the generated onion address:
+3. Reload Tor so it picks up the new hidden service:
 
    ```bash
    sudo systemctl reload tor
+   ```
+
+   Read the generated onion address:
+
+   ```bash
    sudo cat /var/lib/tor/hidden_service_lnd_rest/hostname
    ```
 
@@ -3308,11 +3945,16 @@ terminal window, and scan it with the phone.
    ONION=$(sudo cat /var/lib/tor/hidden_service_lnd_rest/hostname)
    ```
 
-4. Build the Zeus config URL and render it as a QR code in the
-   terminal. The `lndconnect://` scheme is what Zeus expects:
+4. Build the Zeus config URL. The `lndconnect://` scheme is what
+   Zeus expects, and the macaroon needs base64url encoding:
 
    ```bash
    URL="lndconnect://${ONION}:8080?macaroon=$(echo -n "$MACAROON_HEX" | xxd -r -p | base64 | tr '+/' '-_' | tr -d '=')"
+   ```
+
+   Render it as a QR code in the terminal:
+
+   ```bash
    qrencode -t ANSIUTF8 -m 2 "$URL"
    ```
 
@@ -3449,33 +4091,63 @@ RTL is a Node.js application and needs a recent LTS runtime. The
 NodeSource repository gives you upstream Node without waiting for
 Debian backports.
 
-1. As user `admin`, add the NodeSource GPG key and apt source:
+1. As user `admin`, refresh the package index:
 
    ```bash
    sudo apt update
+   ```
+
+   Install the helper packages needed to add a third-party repo over HTTPS:
+
+   ```bash
    sudo apt install -y ca-certificates curl gnupg
+   ```
+
+   Create the keyring directory:
+
+   ```bash
    sudo mkdir -p /etc/apt/keyrings
+   ```
+
+   Import NodeSource's signing key into a dedicated keyring:
+
+   ```bash
    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+   ```
+
+   Add the NodeSource apt source:
+
+   ```bash
    echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
      | sudo tee /etc/apt/sources.list.d/nodesource.list
    ```
 
-2. Install Node and verify:
+2. Refresh the package index again so apt sees the new source:
 
    ```bash
    sudo apt update
+   ```
+
+   Install Node.js:
+
+   ```bash
    sudo apt install -y nodejs
+   ```
+
+   Confirm the runtime version:
+
+   ```bash
    node --version
+   ```
+
+   Confirm the package manager version:
+
+   ```bash
    npm --version
    ```
 
-   Expected output, a `v22.x` line from `node`, and a `10.x` or
-   newer line from `npm`:
-
-   ```text
-   v22.22.2
-   10.9.7
-   ```
+   Expected output is a `v22.x` line from `node`, and a `10.x` or
+   newer line from `npm`.
 
 <Callout type="info" title="If you already installed Node for the Bitcoin Explorer">
   BTC RPC Explorer uses the same NodeSource setup. If Node 22 is
@@ -3489,16 +4161,42 @@ exposed HTTP port, and a compromise there should not hand an
 attacker LND's admin macaroon. A dedicated `rtl` user keeps the
 blast radius small.
 
-1. Create the user and copy in a read-only copy of LND's admin
-   macaroon. RTL only needs to **read** the macaroon; the copy is
-   what keeps `rtl` out of `/data/lnd`:
+1. Create the user. RTL only needs to **read** the macaroon; the
+   copy is what keeps `rtl` out of `/data/lnd`.
+
+   Create the service user:
 
    ```bash
    sudo adduser --disabled-password --gecos "" rtl
+   ```
+
+   Create a directory for the LND credentials:
+
+   ```bash
    sudo mkdir -p /home/rtl/lnd
+   ```
+
+   Copy in a read-only copy of LND's admin macaroon:
+
+   ```bash
    sudo cp /data/lnd/data/chain/bitcoin/mainnet/admin.macaroon /home/rtl/lnd/admin.macaroon
+   ```
+
+   Copy in LND's TLS certificate:
+
+   ```bash
    sudo cp /data/lnd/tls.cert /home/rtl/lnd/tls.cert
+   ```
+
+   Hand the directory to the `rtl` user:
+
+   ```bash
    sudo chown -R rtl:rtl /home/rtl/lnd
+   ```
+
+   Lock the macaroon down:
+
+   ```bash
    sudo chmod 600 /home/rtl/lnd/admin.macaroon
    ```
 
@@ -3511,21 +4209,41 @@ blast radius small.
 
 ## Install RTL [#install-rtl]
 
-1. Become the `rtl` user, clone the repo, and check out the pinned
-   release tag:
+1. Become the `rtl` user:
 
    ```bash
    sudo su - rtl
+   ```
+
+   Clone the repo:
+
+   ```bash
    git clone https://github.com/Ride-The-Lightning/RTL.git
+   ```
+
+   Move into the source tree:
+
+   ```bash
    cd RTL
+   ```
+
+   Check out the pinned release tag:
+
+   ```bash
    git checkout v0.15.6
    ```
 
-2. Verify the tag signature. RTL tags are signed by Suheb; fetch
-   the key and verify:
+2. Verify the tag signature. RTL tags are signed by Suheb.
+
+   Fetch the signing key:
 
    ```bash
    curl https://keybase.io/suheb/pgp_keys.asc | gpg --import
+   ```
+
+   Verify the tag:
+
+   ```bash
    git verify-tag v0.15.6
    ```
 
@@ -3547,10 +4265,15 @@ blast radius small.
 RTL ships a sample config; you copy it, edit a handful of fields,
 and you're done.
 
-1. As user `rtl`, still in `/home/rtl/RTL`:
+1. As user `rtl`, still in `/home/rtl/RTL`, copy the sample config:
 
    ```bash
    cp Sample-RTL-Config.json RTL-Config.json
+   ```
+
+   Open it for editing:
+
+   ```bash
    nano RTL-Config.json
    ```
 
@@ -3630,12 +4353,27 @@ and you're done.
    WantedBy=multi-user.target
    ```
 
-3. Enable and start:
+3. Reload systemd so it sees the new unit:
 
    ```bash
    sudo systemctl daemon-reload
+   ```
+
+   Enable the service so it starts on boot:
+
+   ```bash
    sudo systemctl enable rtl
+   ```
+
+   Start it now:
+
+   ```bash
    sudo systemctl start rtl
+   ```
+
+   Follow the log:
+
+   ```bash
    sudo journalctl -f -u rtl
    ```
 
@@ -3668,10 +4406,15 @@ your browser will warn about exactly once when you trust the root.
    }
    ```
 
-3. Reload Caddy and open the firewall for HTTPS on the LAN:
+3. Reload Caddy so it picks up the new site block:
 
    ```bash
    sudo systemctl reload caddy
+   ```
+
+   Open the firewall for HTTPS on the LAN:
+
+   ```bash
    sudo ufw allow from 192.168.0.0/16 to any port 443 proto tcp comment 'HTTPS LAN only'
    ```
 
@@ -3721,33 +4464,81 @@ Everything `lncli` does, RTL does with a mouse, plus graphs.
 
 ## Upgrading RTL [#upgrading-rtl]
 
-1. As `admin`, stop the service and become `rtl`:
+1. As `admin`, stop the service:
 
    ```bash
    sudo systemctl stop rtl
+   ```
+
+   Switch to the `rtl` user:
+
+   ```bash
    sudo su - rtl
+   ```
+
+   Move into the install directory:
+
+   ```bash
    cd /home/rtl/RTL
    ```
 
-2. Fetch, find the latest tag, check it out, verify the signature,
-   reinstall dependencies:
+2. Fetch the latest tags:
 
    ```bash
    git fetch
+   ```
+
+   Discard any local changes:
+
+   ```bash
    git reset --hard
+   ```
+
+   Resolve the newest version tag into a shell variable:
+
+   ```bash
    latest=$(git tag | grep -E "v[0-9]+\.[0-9]+\.[0-9]+$" | sort --version-sort | tail -n 1)
+   ```
+
+   Sanity-check the resolved version:
+
+   ```bash
    echo "$latest"
+   ```
+
+   Check out that tag:
+
+   ```bash
    git checkout "$latest"
+   ```
+
+   Verify the signature on the tag:
+
+   ```bash
    git verify-tag "$latest"
+   ```
+
+   Reinstall dependencies:
+
+   ```bash
    npm install --omit=dev --legacy-peer-deps
+   ```
+
+   Drop back to `admin`:
+
+   ```bash
    exit
    ```
 
-3. Update `0.15.6` in `lib/versions.ts` to keep this
-   guide honest, then restart:
+3. Update `0.15.6` in `lib/versions.ts` to keep this guide honest, then restart the service:
 
    ```bash
    sudo systemctl start rtl
+   ```
+
+   Follow the log:
+
+   ```bash
    sudo journalctl -f -u rtl
    ```
 
@@ -4115,15 +4906,24 @@ Add the Tor Project's official repository rather than leaning on the
 Debian package, this way you get current Tor releases straight from
 upstream.
 
-1. Fetch the Tor Project's signing key, dearmor it into a keyring
-   file, and clean up the original:
+1. Fetch the Tor Project's signing key:
 
    ```bash
    sudo wget -qO /usr/share/keyrings/deb.torproject.org-keyring.gpg.asc \
      https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc
+   ```
+
+   Dearmor it into a binary keyring file that apt can read:
+
+   ```bash
    sudo gpg --dearmor \
      -o /usr/share/keyrings/deb.torproject.org-keyring.gpg \
      /usr/share/keyrings/deb.torproject.org-keyring.gpg.asc
+   ```
+
+   Remove the original ASCII-armored copy, you don't need it anymore:
+
+   ```bash
    sudo rm /usr/share/keyrings/deb.torproject.org-keyring.gpg.asc
    ```
 
@@ -4147,11 +4947,16 @@ upstream.
    Signed-By: /usr/share/keyrings/deb.torproject.org-keyring.gpg
    ```
 
-3. Install `tor` along with the Tor Project's keyring package (which
-   keeps the signing key up to date automatically):
+3. Refresh the package index so apt sees the new Tor repository:
 
    ```bash
    sudo apt update
+   ```
+
+   Install `tor` along with the Tor Project's keyring package (which
+   keeps the signing key up to date automatically):
+
+   ```bash
    sudo apt install tor deb.torproject.org-keyring
    ```
 
@@ -4255,12 +5060,27 @@ on the public internet sees nothing.
 
 ### Install Tailscale on the Pi [#install-tailscale-on-the-pi]
 
-Add Tailscale's apt repository, install the client, and start it:
+Add Tailscale's signing key to your keyrings:
 
 ```bash
 curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+```
+
+Add the Tailscale apt repository:
+
+```bash
 curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list | sudo tee /etc/apt/sources.list.d/tailscale.list >/dev/null
+```
+
+Refresh the package index:
+
+```bash
 sudo apt update
+```
+
+Install the Tailscale client:
+
+```bash
 sudo apt install -y tailscale
 ```
 
@@ -4272,10 +5092,15 @@ free for up to 100 devices), and authorise the Pi:
 sudo tailscale up
 ```
 
-Confirm it's connected and read its tailnet IP:
+Confirm it's connected:
 
 ```bash test:skip
 tailscale status
+```
+
+Read its tailnet IP:
+
+```bash test:skip
 tailscale ip -4
 ```
 
@@ -4528,8 +5353,8 @@ can reach the Pi.
    to save, `Enter` to confirm the filename, and `Ctrl`-`X` to exit.
 
 2. Paste the following. The cipher-suite lines look like alphabet
-   soup, but they're really just a curated list of modern
-   algorithms, copy them as-is and move on:
+   soup, but they're a curated list of modern algorithms, copy them
+   as-is and move on:
 
    ```text
    # RaspiBolt SSH hardening
@@ -4555,10 +5380,15 @@ can reach the Pi.
 
    No output means the file is valid.
 
-4. Restart the SSH daemon and log out:
+4. Restart the SSH daemon so the new config takes effect:
 
    ```bash
    sudo systemctl restart ssh
+   ```
+
+   Log out of the current session:
+
+   ```bash
    exit
    ```
 
@@ -4592,25 +5422,46 @@ you add later will open its own port when the time comes.
      the Pi once after installing `ufw` and carry on.
    </Callout>
 
-2. Set default policies, allow SSH with rate limiting, turn off
-   logging, and bring the firewall up, all in one go:
+2. Set the default policies. Deny everything coming in, allow
+   everything going out:
 
    ```bash
    sudo ufw default deny incoming
+   ```
+
+   ```bash
    sudo ufw default allow outgoing
+   ```
+
+   Allow SSH with rate limiting. `ufw limit ssh` blocks any IP making
+   six or more connection attempts within 30 seconds, a first layer
+   of brute-force defence on top of what `fail2ban` does below:
+
+   ```bash
    sudo ufw limit ssh
+   ```
+
+   Silence the firewall logs so they don't clutter `journalctl`:
+
+   ```bash
    sudo ufw logging off
+   ```
+
+   Bring the firewall up:
+
+   ```bash
    sudo ufw enable
    ```
 
-   `ufw limit ssh` blocks any IP making six or more connection
-   attempts within 30 seconds, a first layer of brute-force defence
-   on top of what `fail2ban` does below.
-
-3. Make sure `ufw` comes up at boot, and check the active rules:
+3. Make sure `ufw` comes up at boot:
 
    ```bash
    sudo systemctl enable ufw
+   ```
+
+   Check the active rules:
+
+   ```bash
    sudo ufw status verbose
    ```
 
@@ -4667,10 +5518,15 @@ Sounds fiddly, but it's two extra pieces and you're done.
    enabled = true
    ```
 
-3. Restart `fail2ban` and confirm the SSH jail is running:
+3. Restart `fail2ban` so it picks up the new config:
 
    ```bash
    sudo systemctl restart fail2ban
+   ```
+
+   Confirm the SSH jail is running:
+
+   ```bash
    sudo fail2ban-client status sshd
    ```
 
@@ -4718,19 +5574,23 @@ too low for that and throws `too many open files` errors.
    root hard nofile 128000
    ```
 
-2. Make sure PAM actually applies those limits on login. Open each
-   of these files and add a `pam_limits.so` line, right before any
-   trailing comment:
+2. Make sure PAM actually applies those limits on login. Open the
+   first PAM session file:
 
    ```bash
    sudo nano /etc/pam.d/common-session
-   sudo nano /etc/pam.d/common-session-noninteractive
    ```
 
-   Add:
+   Add this line right before any trailing comment:
 
    ```text
    session required                        pam_limits.so
+   ```
+
+   Open the non-interactive companion file and add the same line:
+
+   ```bash
+   sudo nano /etc/pam.d/common-session-noninteractive
    ```
 
 The new limits kick in at the next login.
@@ -4795,14 +5655,24 @@ command.
 
    ```bash
    echo "export LC_ALL=C" >> ~/.bashrc
+   ```
+
+   Reload the shell so the change takes effect in the current session:
+
+   ```bash
    source ~/.bashrc
    ```
 
-2. Refresh the package index and install every available upgrade in
-   one go:
+2. Refresh the package index:
 
    ```bash
-   sudo apt update && sudo apt full-upgrade
+   sudo apt update
+   ```
+
+   Install every available upgrade:
+
+   ```bash
+   sudo apt full-upgrade
    ```
 
 3. Install `git`, you'll need it later to clone source code:
@@ -4870,10 +5740,15 @@ state, backups, will live under `/data/`. Keeping it outside any
 user's home directory makes permissions obvious and means you can
 move it to a bigger drive later with nothing more than a mount.
 
-Create it once, owned by `admin`:
+Create the directory:
 
 ```bash
 sudo mkdir /data
+```
+
+Give the `admin` user ownership:
+
+```bash
 sudo chown admin:admin /data
 ```
 
@@ -5193,8 +6068,15 @@ A dedicated system user limits the blast radius of any bug. Adding it
 to the `bitcoin` group lets Mempool authenticate to Bitcoin Core via
 the cookie file, the same approach BTC RPC Explorer uses.
 
+Create the service user:
+
 ```bash
 sudo adduser --disabled-password --gecos "" mempool
+```
+
+Add it to the `bitcoin` group:
+
+```bash
 sudo adduser mempool bitcoin
 ```
 
@@ -5306,11 +6188,33 @@ Restart the service after changing it.
   `screen` session.
 </Callout>
 
+Switch to the `mempool` user:
+
 ```bash
 sudo su - mempool
+```
+
+Move into the backend directory:
+
+```bash
 cd ~/mempool/backend
+```
+
+Install production dependencies (this is where Rust compiles GBT):
+
+```bash
 npm install --prod
+```
+
+Build the TypeScript backend:
+
+```bash
 npm run build
+```
+
+Drop back to `admin`:
+
+```bash
 exit
 ```
 
@@ -5321,14 +6225,51 @@ exit
   would abort the build.
 </Callout>
 
+Switch to the `mempool` user:
+
 ```bash
 sudo su - mempool
+```
+
+Move into the frontend directory:
+
+```bash
 cd ~/mempool/frontend
+```
+
+Install dependencies:
+
+```bash
 npm install
+```
+
+Generate the theme bundle:
+
+```bash
 npm run generate-themes
+```
+
+Generate the runtime config:
+
+```bash
 npm run generate-config
+```
+
+Build the Angular app in production mode (English locale only):
+
+```bash
 npm run ng -- build --configuration production
+```
+
+Copy static assets into the build output:
+
+```bash
 npm run sync-assets
+```
+
+Drop back to `admin`:
+
+```bash
 exit
 ```
 
@@ -5373,11 +6314,21 @@ PrivateDevices=true
 WantedBy=multi-user.target
 ```
 
-Enable and start:
+Enable the service so it starts on boot:
 
 ```bash
 sudo systemctl enable mempool
+```
+
+Start it now:
+
+```bash
 sudo systemctl start mempool
+```
+
+Follow the log:
+
+```bash
 sudo journalctl -f -u mempool
 ```
 
@@ -5422,10 +6373,15 @@ was not already installed from the BTC RPC Explorer guide):
    else is served as a static file, falling back to `index.html` so
    Angular's client-side routing works for deep links.
 
-3. Open the firewall and reload Caddy:
+3. Open the firewall port:
 
    ```bash
    sudo ufw allow 4080/tcp comment 'Mempool Explorer (Caddy)'
+   ```
+
+   Reload Caddy so it picks up the new block:
+
+   ```bash
    sudo systemctl reload caddy
    ```
 
@@ -5444,52 +6400,149 @@ before upgrading; some releases include a database migration.
 sudo systemctl stop mempool
 ```
 
-Switch to the `mempool` user and update the source:
+Switch to the `mempool` user:
 
 ```bash
 sudo su - mempool
+```
+
+Move into the source tree:
+
+```bash
 cd ~/mempool
+```
+
+Fetch the latest tags:
+
+```bash
 git fetch
+```
+
+Check out the new release tag (replace `<new-version>` with the actual tag):
+
+```bash
 git checkout v<new-version>
+```
+
+Drop back to `admin`:
+
+```bash
 exit
 ```
 
-Rebuild the backend:
+Rebuild the backend. Switch to the `mempool` user:
 
 ```bash
 sudo su - mempool
+```
+
+Move into the backend directory:
+
+```bash
 cd ~/mempool/backend
+```
+
+Refresh production dependencies:
+
+```bash
 npm install --prod
+```
+
+Build the backend:
+
+```bash
 npm run build
+```
+
+Drop back to `admin`:
+
+```bash
 exit
 ```
 
-Rebuild the frontend:
+Rebuild the frontend. Switch to the `mempool` user:
 
 ```bash
 sudo su - mempool
+```
+
+Move into the frontend directory:
+
+```bash
 cd ~/mempool/frontend
+```
+
+Refresh dependencies:
+
+```bash
 npm install
+```
+
+Regenerate the theme bundle:
+
+```bash
 npm run generate-themes
+```
+
+Regenerate the runtime config:
+
+```bash
 npm run generate-config
+```
+
+Rebuild the Angular app in production mode:
+
+```bash
 npm run ng -- build --configuration production
+```
+
+Copy static assets into the build output:
+
+```bash
 npm run sync-assets
+```
+
+Drop back to `admin`:
+
+```bash
 exit
 ```
 
-Start the service and confirm it's running:
+Start the service:
 
 ```bash
 sudo systemctl start mempool
+```
+
+Confirm it's running by skimming the recent log:
+
+```bash
 sudo journalctl -u mempool --since "5 minutes ago"
 ```
 
 ## Uninstall [#uninstall]
 
+Stop the service:
+
 ```bash
 sudo systemctl stop mempool
+```
+
+Disable it so it won't start on boot:
+
+```bash
 sudo systemctl disable mempool
+```
+
+Remove the unit file:
+
+```bash
 sudo rm /etc/systemd/system/mempool.service
+```
+
+Drop the firewall rule:
+
+```bash
 sudo ufw delete "allow 4080/tcp"
 ```
 
@@ -5508,17 +6561,27 @@ DROP USER 'mempool'@'localhost';
 SQL
 ```
 
-If MariaDB is no longer needed:
+If MariaDB is no longer needed, remove the packages:
 
 ```bash
 sudo apt remove --purge mariadb-server mariadb-client
+```
+
+Then drop any dependencies that are now unused:
+
+```bash
 sudo apt autoremove
 ```
 
-Remove the user and home directory:
+Remove the user:
 
 ```bash
 sudo deluser mempool
+```
+
+Delete its home directory:
+
+```bash
 sudo rm -rf /home/mempool
 ```
 
@@ -5605,236 +6668,6 @@ inside block 230,009. This guide walks through extracting and
 reassembling the PDF from your own verified blockchain data, a nice
 demonstration that the foundational document of Bitcoin is, quite
 literally, part of Bitcoin itself.
-
-
-# Aliases (/docs/bonus/raspberry-pi/aliases)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/aliases.md)
-  while we port it over.
-</Callout>
-
-Aliases are shortcuts for long or frequently used shell commands.
-The guide installs a curated `.bash_aliases` file so `admin` gets
-concise shortcuts for inspecting Bitcoin Core, LND, system logs, and
-service status, saving you the muscle memory of typing the full
-command every time.
-
-
-# Boot from microSD card (/docs/bonus/raspberry-pi/boot-from-microsd-card)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/boot-from-microsd-card.md)
-  while we port it over.
-</Callout>
-
-Not every Raspberry Pi can boot directly from an external drive. If
-yours can't, or your USB-SATA enclosure is picky, this guide sets
-up a split configuration: boot the OS from a microSD card, then mount
-the external drive for all the application and blockchain data.
-
-
-# Pimp the command line (/docs/bonus/raspberry-pi/command-line)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/command-line.md)
-  while we port it over.
-</Callout>
-
-A small quality-of-life tweak: make your shell prompt shine with a
-golden Bitcoin symbol, enable color output for `ls`, and nudge the
-defaults so the terminal is easier on the eyes. Purely cosmetic, but
-it takes two minutes and you'll appreciate it every time you log
-back in.
-
-
-# Install Go (/docs/bonus/raspberry-pi/go)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/go.md)
-  while we port it over.
-</Callout>
-
-A few RaspiBolt bonus tools (regolancer and some monitoring
-helpers) are written in [Go](https://go.dev). This short guide handles
-installing, upgrading, and removing the Go toolchain on the Pi, so
-you can build those tools yourself without polluting the rest of
-the system.
-
-
-# Homer (/docs/bonus/raspberry-pi/homer)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/homer.md)
-  while we port it over.
-</Callout>
-
-[Homer](https://github.com/bastienwirtz/homer) is a simple
-browser-based dashboard for your self-hosted services. You list your
-web tools in a YAML file and Homer renders a clean, bookmarkable
-homepage, one click into RTL, ThunderHub, Mempool, BTC RPC
-Explorer, or whatever else you've spun up.
-
-
-# Raspberry Pi bonus (/docs/bonus/raspberry-pi)
-
-
-
-This section covers the host system rather than the Bitcoin or
-Lightning stack: shell tweaks, dashboards, alternative boot and
-hardware configurations, UPS integration, and hardware-wallet-based
-SSH. None of it is required for a working node, it's what you
-reach for when you're ready to polish the setup.
-
-<Callout type="info" title="Content being migrated">
-  The bonus pages are still being rewritten for v4. Each page links to
-  the v3 source while we work through the backlog.
-</Callout>
-
-## What's in this section [#whats-in-this-section]
-
-<Cards>
-  <Card title="System overview" href="/docs/bonus/raspberry-pi/system-overview">
-    Login dashboard with node and system status.
-  </Card>
-
-  <Card title="Aliases" href="/docs/bonus/raspberry-pi/aliases">
-    Shell shortcuts for common node-management commands.
-  </Card>
-
-  <Card title="Pimp the command line" href="/docs/bonus/raspberry-pi/command-line">
-    Colorful prompt and nicer ls defaults.
-  </Card>
-
-  <Card title="Homer" href="/docs/bonus/raspberry-pi/homer">
-    Browser dashboard with links to all your web services.
-  </Card>
-
-  <Card title="Install Go" href="/docs/bonus/raspberry-pi/go">
-    Install, update, or uninstall the Go toolchain.
-  </Card>
-
-  <Card title="Boot from microSD" href="/docs/bonus/raspberry-pi/boot-from-microsd-card">
-    Boot from microSD and use the external drive for data.
-  </Card>
-
-  <Card title="Upgrade external drive" href="/docs/bonus/raspberry-pi/upgrade-external-drive">
-    Migrate your node data to a larger drive.
-  </Card>
-
-  <Card title="Odroid setup" href="/docs/bonus/raspberry-pi/odroid-setup">
-    Run RaspiBolt on an Odroid XU4 or compatible board.
-  </Card>
-
-  <Card title="Trezor SSH agent" href="/docs/bonus/raspberry-pi/trezor-agent">
-    Use a Trezor as a hardware-backed SSH key.
-  </Card>
-
-  <Card title="UPS with NUT" href="/docs/bonus/raspberry-pi/ups-nut">
-    Graceful shutdown when a connected UPS runs low.
-  </Card>
-</Cards>
-
-
-# Odroid setup (/docs/bonus/raspberry-pi/odroid-setup)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/odroid-setup.md)
-  while we port it over.
-</Callout>
-
-If you'd rather run RaspiBolt on different hardware, this guide
-adapts the setup to the [Odroid XU4](https://www.hardkernel.com/)
-and compatible boards like the HC1 and HC2. The main guide's
-software choices still apply, only the OS bring-up and a handful
-of platform-specific tweaks change.
-
-
-# System overview (/docs/bonus/raspberry-pi/system-overview)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/system-overview.md)
-  while we port it over.
-</Callout>
-
-The [raspibolt-pulse](https://github.com/raspibolt/raspibolt-pulse)
-script prints a dense, color-coded status overview on every SSH
-login, block height, channel balances, disk usage, memory, and
-service health all in one glance. It's the fastest way to confirm
-the node is healthy before you start tinkering.
-
-
-# Trezor SSH agent (/docs/bonus/raspberry-pi/trezor-agent)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/trezor-agent.md)
-  while we port it over.
-</Callout>
-
-Instead of trusting a plain SSH key on your laptop, you can let a
-Trezor hardware wallet sign SSH challenges. Your key never leaves
-the device, and every login prompts you to physically confirm on
-the Trezor, a meaningful bump in security for the admin account
-that runs your node.
-
-
-# Upgrade external drive (/docs/bonus/raspberry-pi/upgrade-external-drive)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/upgrade-external-drive.md)
-  while we port it over.
-</Callout>
-
-The blockchain keeps growing, so the 1 TB drive that felt generous
-three years ago will eventually fill up. This guide walks through
-cloning your node's data onto a larger drive and swapping it in
-without losing channels or state, minimizing downtime for your
-Lightning node along the way.
-
-
-# UPS with NUT (/docs/bonus/raspberry-pi/ups-nut)
-
-
-
-<Callout type="info" title="Migration in progress">
-  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
-  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/ups-nut.md)
-  while we port it over.
-</Callout>
-
-A sudden power loss can corrupt the Bitcoin or LND database and
-force a lengthy resync. With a UPS and
-[Network UPS Tools](https://networkupstools.org/) (NUT), your node
-watches the battery level and triggers a clean shutdown before the
-UPS runs out, turning a brownout into a five-minute nuisance
-instead of hours of downtime.
 
 
 # AmbossPing (/docs/bonus/lightning/ambossping)
@@ -6233,3 +7066,233 @@ wallet that talks to your own LND node over gRPC. It gives you a
 clean mobile UI for managing peers, opening channels, making
 payments, and generating invoices, all backed by the node running
 in your own home.
+
+
+# Aliases (/docs/bonus/raspberry-pi/aliases)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/aliases.md)
+  while we port it over.
+</Callout>
+
+Aliases are shortcuts for long or frequently used shell commands.
+The guide installs a curated `.bash_aliases` file so `admin` gets
+concise shortcuts for inspecting Bitcoin Core, LND, system logs, and
+service status, saving you the muscle memory of typing the full
+command every time.
+
+
+# Boot from microSD card (/docs/bonus/raspberry-pi/boot-from-microsd-card)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/boot-from-microsd-card.md)
+  while we port it over.
+</Callout>
+
+Not every Raspberry Pi can boot directly from an external drive. If
+yours can't, or your USB-SATA enclosure is picky, this guide sets
+up a split configuration: boot the OS from a microSD card, then mount
+the external drive for all the application and blockchain data.
+
+
+# Pimp the command line (/docs/bonus/raspberry-pi/command-line)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/command-line.md)
+  while we port it over.
+</Callout>
+
+A small quality-of-life tweak: make your shell prompt shine with a
+golden Bitcoin symbol, enable color output for `ls`, and nudge the
+defaults so the terminal is easier on the eyes. Purely cosmetic, but
+it takes two minutes and you'll appreciate it every time you log
+back in.
+
+
+# Install Go (/docs/bonus/raspberry-pi/go)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/go.md)
+  while we port it over.
+</Callout>
+
+A few RaspiBolt bonus tools (regolancer and some monitoring
+helpers) are written in [Go](https://go.dev). This short guide handles
+installing, upgrading, and removing the Go toolchain on the Pi, so
+you can build those tools yourself without polluting the rest of
+the system.
+
+
+# Homer (/docs/bonus/raspberry-pi/homer)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/homer.md)
+  while we port it over.
+</Callout>
+
+[Homer](https://github.com/bastienwirtz/homer) is a simple
+browser-based dashboard for your self-hosted services. You list your
+web tools in a YAML file and Homer renders a clean, bookmarkable
+homepage, one click into RTL, ThunderHub, Mempool, BTC RPC
+Explorer, or whatever else you've spun up.
+
+
+# Raspberry Pi bonus (/docs/bonus/raspberry-pi)
+
+
+
+This section covers the host system rather than the Bitcoin or
+Lightning stack: shell tweaks, dashboards, alternative boot and
+hardware configurations, UPS integration, and hardware-wallet-based
+SSH. None of it is required for a working node, it's what you
+reach for when you're ready to polish the setup.
+
+<Callout type="info" title="Content being migrated">
+  The bonus pages are still being rewritten for v4. Each page links to
+  the v3 source while we work through the backlog.
+</Callout>
+
+## What's in this section [#whats-in-this-section]
+
+<Cards>
+  <Card title="System overview" href="/docs/bonus/raspberry-pi/system-overview">
+    Login dashboard with node and system status.
+  </Card>
+
+  <Card title="Aliases" href="/docs/bonus/raspberry-pi/aliases">
+    Shell shortcuts for common node-management commands.
+  </Card>
+
+  <Card title="Pimp the command line" href="/docs/bonus/raspberry-pi/command-line">
+    Colorful prompt and nicer ls defaults.
+  </Card>
+
+  <Card title="Homer" href="/docs/bonus/raspberry-pi/homer">
+    Browser dashboard with links to all your web services.
+  </Card>
+
+  <Card title="Install Go" href="/docs/bonus/raspberry-pi/go">
+    Install, update, or uninstall the Go toolchain.
+  </Card>
+
+  <Card title="Boot from microSD" href="/docs/bonus/raspberry-pi/boot-from-microsd-card">
+    Boot from microSD and use the external drive for data.
+  </Card>
+
+  <Card title="Upgrade external drive" href="/docs/bonus/raspberry-pi/upgrade-external-drive">
+    Migrate your node data to a larger drive.
+  </Card>
+
+  <Card title="Odroid setup" href="/docs/bonus/raspberry-pi/odroid-setup">
+    Run RaspiBolt on an Odroid XU4 or compatible board.
+  </Card>
+
+  <Card title="Trezor SSH agent" href="/docs/bonus/raspberry-pi/trezor-agent">
+    Use a Trezor as a hardware-backed SSH key.
+  </Card>
+
+  <Card title="UPS with NUT" href="/docs/bonus/raspberry-pi/ups-nut">
+    Graceful shutdown when a connected UPS runs low.
+  </Card>
+</Cards>
+
+
+# Odroid setup (/docs/bonus/raspberry-pi/odroid-setup)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/odroid-setup.md)
+  while we port it over.
+</Callout>
+
+If you'd rather run RaspiBolt on different hardware, this guide
+adapts the setup to the [Odroid XU4](https://www.hardkernel.com/)
+and compatible boards like the HC1 and HC2. The main guide's
+software choices still apply, only the OS bring-up and a handful
+of platform-specific tweaks change.
+
+
+# System overview (/docs/bonus/raspberry-pi/system-overview)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/system-overview.md)
+  while we port it over.
+</Callout>
+
+The [raspibolt-pulse](https://github.com/raspibolt/raspibolt-pulse)
+script prints a dense, color-coded status overview on every SSH
+login, block height, channel balances, disk usage, memory, and
+service health all in one glance. It's the fastest way to confirm
+the node is healthy before you start tinkering.
+
+
+# Trezor SSH agent (/docs/bonus/raspberry-pi/trezor-agent)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/trezor-agent.md)
+  while we port it over.
+</Callout>
+
+Instead of trusting a plain SSH key on your laptop, you can let a
+Trezor hardware wallet sign SSH challenges. Your key never leaves
+the device, and every login prompts you to physically confirm on
+the Trezor, a meaningful bump in security for the admin account
+that runs your node.
+
+
+# Upgrade external drive (/docs/bonus/raspberry-pi/upgrade-external-drive)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/upgrade-external-drive.md)
+  while we port it over.
+</Callout>
+
+The blockchain keeps growing, so the 1 TB drive that felt generous
+three years ago will eventually fill up. This guide walks through
+cloning your node's data onto a larger drive and swapping it in
+without losing channels or state, minimizing downtime for your
+Lightning node along the way.
+
+
+# UPS with NUT (/docs/bonus/raspberry-pi/ups-nut)
+
+
+
+<Callout type="info" title="Migration in progress">
+  This bonus page hasn't been rewritten for RaspiBolt v4 yet. The v3
+  version still works, see the [original guide on GitHub](https://github.com/raspibolt/raspibolt/blob/master/guide/bonus/raspberry-pi/ups-nut.md)
+  while we port it over.
+</Callout>
+
+A sudden power loss can corrupt the Bitcoin or LND database and
+force a lengthy resync. With a UPS and
+[Network UPS Tools](https://networkupstools.org/) (NUT), your node
+watches the battery level and triggers a clean shutdown before the
+UPS runs out, turning a brownout into a five-minute nuisance
+instead of hours of downtime.

@@ -25,8 +25,15 @@ A dedicated system user limits the blast radius of any bug. Adding it
 to the `bitcoin` group lets Mempool authenticate to Bitcoin Core via
 the cookie file, the same approach BTC RPC Explorer uses.
 
+Create the service user:
+
 ```bash
 sudo adduser --disabled-password --gecos "" mempool
+```
+
+Add it to the `bitcoin` group:
+
+```bash
 sudo adduser mempool bitcoin
 ```
 
@@ -138,11 +145,33 @@ Restart the service after changing it.
   `screen` session.
 </Callout>
 
+Switch to the `mempool` user:
+
 ```bash
 sudo su - mempool
+```
+
+Move into the backend directory:
+
+```bash
 cd ~/mempool/backend
+```
+
+Install production dependencies (this is where Rust compiles GBT):
+
+```bash
 npm install --prod
+```
+
+Build the TypeScript backend:
+
+```bash
 npm run build
+```
+
+Drop back to `admin`:
+
+```bash
 exit
 ```
 
@@ -153,14 +182,51 @@ exit
   would abort the build.
 </Callout>
 
+Switch to the `mempool` user:
+
 ```bash
 sudo su - mempool
+```
+
+Move into the frontend directory:
+
+```bash
 cd ~/mempool/frontend
+```
+
+Install dependencies:
+
+```bash
 npm install
+```
+
+Generate the theme bundle:
+
+```bash
 npm run generate-themes
+```
+
+Generate the runtime config:
+
+```bash
 npm run generate-config
+```
+
+Build the Angular app in production mode (English locale only):
+
+```bash
 npm run ng -- build --configuration production
+```
+
+Copy static assets into the build output:
+
+```bash
 npm run sync-assets
+```
+
+Drop back to `admin`:
+
+```bash
 exit
 ```
 
@@ -205,11 +271,21 @@ PrivateDevices=true
 WantedBy=multi-user.target
 ```
 
-Enable and start:
+Enable the service so it starts on boot:
 
 ```bash
 sudo systemctl enable mempool
+```
+
+Start it now:
+
+```bash
 sudo systemctl start mempool
+```
+
+Follow the log:
+
+```bash
 sudo journalctl -f -u mempool
 ```
 
@@ -254,10 +330,15 @@ was not already installed from the BTC RPC Explorer guide):
    else is served as a static file, falling back to `index.html` so
    Angular's client-side routing works for deep links.
 
-3. Open the firewall and reload Caddy:
+3. Open the firewall port:
 
    ```bash
    sudo ufw allow 4080/tcp comment 'Mempool Explorer (Caddy)'
+   ```
+
+   Reload Caddy so it picks up the new block:
+
+   ```bash
    sudo systemctl reload caddy
    ```
 
@@ -276,52 +357,149 @@ before upgrading; some releases include a database migration.
 sudo systemctl stop mempool
 ```
 
-Switch to the `mempool` user and update the source:
+Switch to the `mempool` user:
 
 ```bash
 sudo su - mempool
+```
+
+Move into the source tree:
+
+```bash
 cd ~/mempool
+```
+
+Fetch the latest tags:
+
+```bash
 git fetch
+```
+
+Check out the new release tag (replace `<new-version>` with the actual tag):
+
+```bash
 git checkout v<new-version>
+```
+
+Drop back to `admin`:
+
+```bash
 exit
 ```
 
-Rebuild the backend:
+Rebuild the backend. Switch to the `mempool` user:
 
 ```bash
 sudo su - mempool
+```
+
+Move into the backend directory:
+
+```bash
 cd ~/mempool/backend
+```
+
+Refresh production dependencies:
+
+```bash
 npm install --prod
+```
+
+Build the backend:
+
+```bash
 npm run build
+```
+
+Drop back to `admin`:
+
+```bash
 exit
 ```
 
-Rebuild the frontend:
+Rebuild the frontend. Switch to the `mempool` user:
 
 ```bash
 sudo su - mempool
+```
+
+Move into the frontend directory:
+
+```bash
 cd ~/mempool/frontend
+```
+
+Refresh dependencies:
+
+```bash
 npm install
+```
+
+Regenerate the theme bundle:
+
+```bash
 npm run generate-themes
+```
+
+Regenerate the runtime config:
+
+```bash
 npm run generate-config
+```
+
+Rebuild the Angular app in production mode:
+
+```bash
 npm run ng -- build --configuration production
+```
+
+Copy static assets into the build output:
+
+```bash
 npm run sync-assets
+```
+
+Drop back to `admin`:
+
+```bash
 exit
 ```
 
-Start the service and confirm it's running:
+Start the service:
 
 ```bash
 sudo systemctl start mempool
+```
+
+Confirm it's running by skimming the recent log:
+
+```bash
 sudo journalctl -u mempool --since "5 minutes ago"
 ```
 
 ## Uninstall [#uninstall]
 
+Stop the service:
+
 ```bash
 sudo systemctl stop mempool
+```
+
+Disable it so it won't start on boot:
+
+```bash
 sudo systemctl disable mempool
+```
+
+Remove the unit file:
+
+```bash
 sudo rm /etc/systemd/system/mempool.service
+```
+
+Drop the firewall rule:
+
+```bash
 sudo ufw delete "allow 4080/tcp"
 ```
 
@@ -340,16 +518,26 @@ DROP USER 'mempool'@'localhost';
 SQL
 ```
 
-If MariaDB is no longer needed:
+If MariaDB is no longer needed, remove the packages:
 
 ```bash
 sudo apt remove --purge mariadb-server mariadb-client
+```
+
+Then drop any dependencies that are now unused:
+
+```bash
 sudo apt autoremove
 ```
 
-Remove the user and home directory:
+Remove the user:
 
 ```bash
 sudo deluser mempool
+```
+
+Delete its home directory:
+
+```bash
 sudo rm -rf /home/mempool
 ```
