@@ -2,3 +2,4 @@
 _site
 cast/tmp*
 *.xcf
+.DS_Store
