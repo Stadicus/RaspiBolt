@@ -143,7 +143,7 @@ terminal window, and scan it with the phone.
    * Use its **built-in Tor daemon** (Android only, toggle in
      Zeus settings), convenient, but note that channel ops will
      fail if the app is backgrounded aggressively by Android's
-     battery optimiser.
+     battery optimizer.
 
 3. Open Zeus, tap **Get Started**, then **Connect a node**.
 

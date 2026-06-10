@@ -17,7 +17,7 @@ LAN.
 
 <Screenshot src="/images/lightning_rtl.png" alt="Ride The Lightning dashboard showing channel list, balances, and routing stats" caption="Ride The Lightning: channels, on-chain, routing, fees, all in one dashboard" />
 
-## Install Node.js 22 [#install-nodejs-22]
+## Install Node.js [#install-nodejs]
 
 RTL is a Node.js application and needs a recent LTS runtime. The
 NodeSource repository gives you upstream Node without waiting for
@@ -93,8 +93,8 @@ exposed HTTP port, and a compromise there should not hand an
 attacker LND's admin macaroon. A dedicated `rtl` user keeps the
 blast radius small.
 
-1. Create the user. RTL only needs to **read** the macaroon; the
-   copy is what keeps `rtl` out of `/data/lnd`.
+1. RTL only needs to **read** the macaroon; the copy is what
+   keeps `rtl` out of `/data/lnd`.
 
    Create the service user:
 

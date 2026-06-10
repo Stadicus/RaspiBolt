@@ -9,7 +9,7 @@ ever connecting a screen or keyboard to it.
 
 ## Which operating system? [#which-operating-system]
 
-Which flavour of Linux belongs on a node? You'll use &#x2A;*Raspberry Pi
+Which flavor of Linux belongs on a node? You'll use &#x2A;*Raspberry Pi
 OS Lite (64-bit)**: a minimal, headless Debian-based system with no
 desktop environment. No wasted RAM on things you'll never see.
 
@@ -64,7 +64,7 @@ On the &#x2A;*"General"** tab:
 * **Set username and password**, turn this on, enter the username
   `admin`, and use your &#x2A;*password \[A]**. Every command in this
   guide assumes the user is called `admin`.
-* **Configure wifi**, only if you plan to connect over Wi-Fi.
+* **Configure wireless LAN**, only if you plan to connect over Wi-Fi.
   Enter the SSID and password, and set the two-letter country code
   (e.g. `US`, `DE`, `CH`). Leave this blank if you'll use Ethernet,
   which, if you're sitting near the router, is what you want.
@@ -145,6 +145,6 @@ Your Pi should now boot from the SSD.
 <Callout type="info">
   If USB boot still doesn't work after reflashing, the drive or
   enclosure is most likely the problem, see
-  [Troubleshooting](../troubleshooting) for known-good chipsets
+  [Troubleshooting](/docs/troubleshooting) for known-good chipsets
   and workarounds.
 </Callout>

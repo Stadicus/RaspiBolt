@@ -6,15 +6,15 @@
   - [Overview](/docs/raspberry-pi): From bare hardware to a hardened Bitcoin-ready computer.
   - [Preparations](/docs/raspberry-pi/preparations): Get the hardware sorted and pick your passwords before you boot anything.
   - [Operating system](/docs/raspberry-pi/operating-system): Write Raspberry Pi OS to the SSD, pre-configure it, and boot the Pi for the first time.
-  - [Remote access](/docs/raspberry-pi/remote-access): SSH to the Pi from macOS, Linux, or Windows OpenSSH. Command-line basics for first-timers. Generate and install an ed25519 key for passwordless login.
+  - [Remote access](/docs/raspberry-pi/remote-access): SSH to the Pi from macOS, Linux, or Windows OpenSSH. Command-line basics for first-timers. Generate and install an Ed25519 key for passwordless login.
   - [System configuration](/docs/raspberry-pi/system-configuration): apt full-upgrade, verify SSD speed with hdparm, create /data directory and service-user symlinks, confirm zram swap is active on Trixie.
-  - [Security](/docs/raspberry-pi/security): SSH hardening with ed25519 keys, UFW firewall rules, fail2ban brute-force protection on systemd, open-files limit, disable Bluetooth and Wi-Fi radios.
+  - [Security](/docs/raspberry-pi/security): SSH hardening with Ed25519 keys, UFW firewall rules, fail2ban brute-force protection on systemd, open-files limit, disable Bluetooth and Wi-Fi radios.
   - [Privacy](/docs/raspberry-pi/privacy): Route Bitcoin and Lightning traffic through Tor, then add Tailscale for painless remote access.
 - Bitcoin
   - [Overview](/docs/bitcoin): Install Bitcoin Core, Electrs, and a block explorer, then point a desktop wallet at your own node.
   - [Bitcoin client](/docs/bitcoin/bitcoin-client): Install and run Bitcoin Core (bitcoind), GPG-verify the release, tune bitcoin.conf for a Pi 5 (dbcache, maxmempool), and sync the full blockchain (IBD, initial block download) through Tor.
   - [Electrum server](/docs/bitcoin/electrum-server): Build Electrs from source, index the blockchain for Electrum-protocol wallets, wrap the raw TCP port in TLS with stunnel so Sparrow, Electrum, and hardware wallets can connect privately.
-  - [Blockchain explorer](/docs/bitcoin/blockchain-explorer): Run BTC RPC Explorer on Node.js 22 behind Caddy HTTPS. Private lookup for blocks, transactions, mempool, fee estimates, UTXO queries. No leakage to public explorers.
+  - [Blockchain explorer](/docs/bitcoin/blockchain-explorer): Run BTC RPC Explorer on Node.js behind Caddy HTTPS. Private lookup for blocks, transactions, mempool, fee estimates, UTXO queries. No leakage to public explorers.
   - [Desktop wallet](/docs/bitcoin/desktop-wallet): Point Sparrow Wallet at your own Electrs over TLS. Watch-only wallets, hardware wallet integration, coin control, labelling UTXOs, air-gapped PSBT signing.
 - Lightning
   - [Overview](/docs/lightning): Install LND, wire up a web dashboard and mobile app, and keep your channels safe.
@@ -26,7 +26,7 @@
   - [Bonus](/docs/bonus): Optional guides for extra tooling, alternative software, and niche setups that complement the main RaspiBolt.
   - Bitcoin bonus
     - [Bitcoin bonus](/docs/bonus/bitcoin): Additional Bitcoin software, explorers, wallets, alternative Electrum servers, privacy tools, and testnet.
-    - [Mempool Explorer](/docs/bonus/bitcoin/mempool): Self-hosted Bitcoin mempool visualizer and block explorer. Build Mempool v3 from source, MariaDB backend, Caddy HTTPS on port 4080.
+    - [Mempool explorer](/docs/bonus/bitcoin/mempool): Self-hosted Bitcoin mempool visualizer and block explorer. Build Mempool v3 from source, MariaDB backend, Caddy HTTPS on port 4080.
     - [UTXOracle](/docs/bonus/bitcoin/UTXOracle): Python script that estimates the BTC/USD price from your own blockchain data, no external exchange required.
     - [Download the white paper](/docs/bonus/bitcoin/white-paper): Reconstruct the Bitcoin white paper PDF directly from the blockchain data on your own node.
     - [Bisq](/docs/bonus/bitcoin/bisq): Decentralized desktop exchange for privately buying and selling non-KYC bitcoin.
@@ -56,7 +56,7 @@
     - [rebalance-lnd](/docs/bonus/lightning/rebalance-lnd): Command-line tool for circular rebalancing of LND channels to even out local and remote liquidity.
     - [regolancer](/docs/bonus/lightning/regolancer): Lightweight LND rebalancer written in Go, focused on fast and efficient circular rebalances.
     - [Core Lightning](/docs/bonus/lightning/cln): Alternative Lightning implementation you can run instead of LND, or side-by-side with it on the same node.
-    - [LNbits](/docs/bonus/lightning/lnbits): Free and open-source Lightning wallet and accounts system with a plug-in extension model.
+    - [LNbits](/docs/bonus/lightning/lnbits): Free and open-source Lightning wallet and accounts system with a plugin extension model.
     - [CLBoss](/docs/bonus/lightning/clboss): Automated channel and liquidity manager for Core Lightning that opens, rebalances, and re-prices channels on its own.
     - [Lightning Terminal](/docs/bonus/lightning/lightning-terminal): Browser-based UI from Lightning Labs for managing LND channel liquidity with Loop and Pool.
     - [Zap Desktop](/docs/bonus/lightning/zap-desktop): Cross-platform Lightning Network wallet with a focus on user experience and ease of use.
@@ -76,5 +76,5 @@
     - [UPS with NUT](/docs/bonus/raspberry-pi/ups-nut): Configure Network UPS Tools so your node shuts down cleanly when a connected UPS reaches a critical battery level.
 
 - **Reference**
-- [Troubleshooting](/docs/troubleshooting): SSH locked out, hdparm too slow, UAS quirks, fail2ban unban, ufw rules, bitcoind won't start, stuck IBD, LND chain sync. Fix the frikkin' little thing.
+- [Troubleshooting](/docs/troubleshooting): SSH locked out, hdparm too slow, UAS quirks, fail2ban unban, UFW rules, bitcoind won't start, stuck IBD, LND chain sync. Fix the frikkin' little thing.
 - [FAQ](/docs/faq): Upgrading from v3, reading an ext4 SSD on Windows, restoring LND data, common Linux commands, setting a fixed IP. Answers to the questions that come up again and again in the Telegram group.

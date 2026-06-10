@@ -37,9 +37,10 @@ location. Same pattern you used for `bitcoind`.
    sudo adduser --disabled-password --gecos "" lnd
    ```
 
-   Add it to the `bitcoin` and `debian-tor` groups so it can read
-   `bitcoin.conf` for auto-RPC and Tor's cookie file for the control
-   port:
+   Add it to the `debian-tor` group so it can read Tor's cookie
+   file for the control port, and to the `bitcoin` group (the
+   standard grouping on this node; the RPC credentials themselves
+   go into `lnd.conf` below):
 
    ```bash
    sudo usermod -a -G bitcoin,debian-tor lnd
@@ -262,7 +263,7 @@ chain backend, Tor, channel policy, watchtower client, all of it.
    ```
 
 2. Paste the following. Replace `YourAlias` with whatever name you
-   want to show up in channel graphs, and pick a hex colour you
+   want to show up in channel graphs, and pick a hex color you
    like:
 
    ```ini
@@ -286,8 +287,6 @@ chain backend, Tor, channel policy, watchtower client, all of it.
    tlsdisableautofill=true
 
    # Channel defaults
-   bitcoin.basefee=1000
-   bitcoin.feerate=1
    minchansize=100000
    accept-keysend=true
    accept-amp=true
@@ -305,6 +304,9 @@ chain backend, Tor, channel policy, watchtower client, all of it.
    bitcoin.active=true
    bitcoin.mainnet=true
    bitcoin.node=bitcoind
+   # Default routing fees for new channels
+   bitcoin.basefee=1000
+   bitcoin.feerate=1
 
    [Bitcoind]
    bitcoind.rpchost=127.0.0.1:8332
@@ -329,8 +331,10 @@ chain backend, Tor, channel policy, watchtower client, all of it.
    wtclient.active=true
    ```
 
-   Replace `PASSWORD_B_REPLACE_ME` with the `rpcpass` from your
-   `bitcoin.conf` (password `[B]` from the Bitcoin section).
+   Replace `PASSWORD_B_REPLACE_ME` with password `[B]`, the same
+   password you fed to `rpcauth.py` when setting up Bitcoin Core
+   (`bitcoin.conf` only stores its salted hash, so you won't find
+   the cleartext there).
 
 <Callout type="info" title="Stream isolation, and why we skip it for bitcoind">
   `tor.streamisolation=true` gives every outbound Lightning
@@ -531,7 +535,7 @@ exit
    ln -s /data/lnd /home/admin/.lnd
    ```
 
-   Add group-execute on every directory under `data/`:
+   Add group-execute on every directory under `/data/lnd/data/`:
 
    ```bash test:skip
    sudo chmod -R g+X /data/lnd/data/
@@ -560,13 +564,20 @@ exit
    `block_height`, and `synced_to_chain: true` once LND has caught
    up with the graph. `getnetworkinfo` should show a non-zero
    number of nodes and channels, proof that LND is talking to the
-   wider Lightning network over Tor.
+   wider Lightning Network over Tor.
 
 **Main takeaway:** LND is up, the wallet is unlocked, the 24-word
 seed is on paper, and `lncli` works from `admin`. You have a
 working Lightning node.
 
 ## Fund the node and open a channel [#fund-the-node-and-open-a-channel]
+
+<Callout type="info" title="Before you open channels in anger">
+  Set up [Channel backup](/docs/lightning/channel-backup) **before**
+  you open your first real channel. The backup is only useful if it
+  exists when you need it, and you need it as soon as the first
+  channel lands.
+</Callout>
 
 1. Generate a native-SegWit address and send a small amount of
    on-chain sats to it from another wallet:
@@ -604,13 +615,6 @@ working Lightning node.
    ```bash test:skip
    lncli listchannels
    ```
-
-<Callout type="info" title="Before you open channels in anger">
-  Set up [Channel backup](/docs/lightning/channel-backup) **before**
-  you open your first real channel. The backup is only useful if it
-  exists when you need it, and you need it as soon as the first
-  channel lands.
-</Callout>
 
 ## Add watchtowers [#add-watchtowers]
 
@@ -650,26 +654,36 @@ add two or three more for redundancy.
 
 A small reference you'll come back to:
 
+Node info and peers:
+
 ```bash test:skip
-# node info and peers
 lncli getinfo
 lncli listpeers
+```
 
-# channels
+Channels:
+
+```bash test:skip
 lncli pendingchannels
 lncli listchannels
 lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
 lncli closechannel --force <funding_txid> <output_index>
+```
 
-# payments
+Payments:
+
+```bash test:skip
 lncli decodepayreq <invoice>
 lncli payinvoice <invoice>
 lncli sendpayment --amp --dest=<pubkey> --amt=<sats>
 lncli addinvoice <sats>
 lncli listinvoices
 lncli listpayments
+```
 
-# help
+Help:
+
+```bash test:skip
 lncli
 lncli help <command>
 ```
@@ -688,7 +702,5 @@ database migrations that are one-way. Before every upgrade:
 2. Stop the service: `sudo systemctl stop lnd`.
 3. Repeat the download, verify, and install steps above with the
    new version.
-4. Update `0.20.1-beta` in `lib/versions.ts` so the rest of the
-   guide agrees.
-5. Start the service: `sudo systemctl start lnd` and tail the log
+4. Start the service: `sudo systemctl start lnd` and tail the log
    until you see `synced_to_chain: true`.

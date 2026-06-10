@@ -148,9 +148,9 @@ privacy problems, different tools.
 
 Start at the top and walk down:
 
-1. [Hardware](/docs/raspberry-pi) — Pi, SSD, OS, SSH, firewall, Tor, Tailscale.
-2. [Bitcoin](/docs/bitcoin) — Bitcoin Core, Electrs, BTC RPC Explorer, Sparrow.
-3. [Lightning](/docs/lightning) — LND, RTL, Zeus, channel backup.
+1. [Hardware](/docs/raspberry-pi): Pi, SSD, OS, SSH, firewall, Tor, Tailscale.
+2. [Bitcoin](/docs/bitcoin): Bitcoin Core, Electrs, BTC RPC Explorer, Sparrow.
+3. [Lightning](/docs/lightning): LND, RTL, Zeus, channel backup.
 
 If anything on the map surprised you, the matching install page has
 the why and the how.
@@ -189,7 +189,7 @@ middleman, no API key away from being cut off. If Bitcoin is digital
 gold, a full node is the set of scales you own and trust.
 
 That kind of independence shouldn't be reserved for people with a
-rack in a datacentre. A Raspberry Pi in the corner of your office,
+rack in a datacenter. A Raspberry Pi in the corner of your office,
 quietly validating every block that's ever been mined, is a
 delightfully democratic piece of infrastructure.
 
@@ -223,7 +223,7 @@ issues list is where the guide gets better.
 
 ## The good old days [#the-good-old-days]
 
-The original goal of the RaspiBolt guide, back in 2017, was simply
+The original goal of the RaspiBolt guide, back in 2017, was
 buying a Blockaccino. I used the
 [Eclair](https://github.com/ACINQ/eclair) Lightning implementation
 on testnet, because mainnet wasn't running yet. Oh, how time flies.
@@ -284,7 +284,7 @@ Ext4 isn't compatible with Windows out of the box. Tools like
 macOS, [extFS for Mac](https://www.paragon-software.com/home/extfs-mac/)
 does the same.
 
-If you just need to copy files off the drive once, plugging it into
+If you only need to copy files off the drive once, plugging it into
 another Linux box, or the Pi itself, is usually the path of least
 resistance.
 
@@ -505,7 +505,7 @@ jump back to the relevant section.
 ## Jump to the thing that's on fire [#jump-to-the-thing-thats-on-fire]
 
 <Cards>
-  <Card title="SSH locked out" href="#ssh-lockout-login-via-console">
+  <Card title="SSH locked out" href="#ssh-lockout-log-in-via-the-console">
     Wrong key, mistyped password, fail2ban banned your LAN. Console fallback.
   </Card>
 
@@ -513,7 +513,7 @@ jump back to the relevant section.
     UAS quirks, usb-storage.quirks in cmdline.txt, ASMedia vs JMicron.
   </Card>
 
-  <Card title="Firewall rules (ufw)" href="#are-the-right-ports-open-on-the-firewall">
+  <Card title="Firewall rules (UFW)" href="#are-the-right-ports-open-on-the-firewall">
     Ports 22, 8333, 9735. Subnet mismatch. LAN reachability.
   </Card>
 
@@ -549,7 +549,7 @@ commands.
 
 ## Hardware and operating system [#hardware-and-operating-system]
 
-### SSH lockout: login via console [#ssh-lockout-login-via-console]
+### SSH lockout: log in via the console [#ssh-lockout-log-in-via-the-console]
 
 If SSH refuses to let you in, wrong key, mistyped password,
 fail2ban banned you from your own LAN, plug a display and
@@ -640,7 +640,7 @@ To                         Action      From
 If your subnet doesn't match what the rules say (`192.168.0.0/24`
 versus `192.168.1.0/24`, for example), nothing on your LAN can
 reach the node. See [Security](/docs/raspberry-pi/security) for
-the canonical ufw rules.
+the canonical UFW rules.
 
 ## Users and directories [#users-and-directories]
 
@@ -1086,7 +1086,7 @@ ports exposed for LND later on, and RPC locked to localhost.
   of this page.
 </Callout>
 
-## Systemd unit [#systemd-unit]
+## systemd unit [#systemd-unit]
 
 The node needs to start on boot and stay running, that's what
 systemd is for. This unit runs `bitcoind` as the `bitcoin` user,
@@ -1281,10 +1281,7 @@ that does not touch the system Python.
 
 Upgrades follow the same download-verify-install rhythm as a fresh
 install. Always read the [release notes](https://github.com/bitcoin/bitcoin/releases)
-first, some releases change the data format or default behaviour.
-The `30.2` token and its derived URL in
-`lib/versions.ts` are the single source of truth in this guide; bump
-that file when a new version lands.
+first, some releases change the data format or default behavior.
 
 Drop into `/tmp`:
 
@@ -1372,7 +1369,7 @@ fully synced (`verificationprogress` at 1.0), `txindex=1`
 is in `bitcoin.conf` (the default config in this guide already has
 it), and Electrs is indexed and answering queries.
 
-## Install Node.js 22 LTS [#install-nodejs-22-lts]
+## Install Node.js [#install-nodejs]
 
 Debian 13 ships Node.js 20; BTC RPC Explorer is tested against
 Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
@@ -1575,7 +1572,7 @@ Stop it with `Ctrl`-`C` and exit back to `admin`:
 exit
 ```
 
-## Systemd unit [#systemd-unit]
+## systemd unit [#systemd-unit]
 
 1. Create the service file:
 
@@ -2028,8 +2025,8 @@ Sparrow to route external traffic through Tor running on your laptop:
      on port 9050), or run Tor Browser (SOCKS on port 9150).
    * Linux: `sudo apt install tor && sudo systemctl enable --now tor`
      (port 9050).
-   * Windows: install the Tor Browser or the Tor Expert Bundle; see
-     [Privacy](/docs/raspberry-pi/privacy#windows) for the specifics.
+   * Windows: install and run the Tor Browser (SOCKS on port 9150)
+     or the Tor Expert Bundle (port 9050).
 2. In **Preferences → Server**, toggle **Use Proxy** on.
 3. **Proxy URL:** `127.0.0.1`. &#x2A;*Port:** `9050` (daemon) or `9150`
    (Tor Browser).
@@ -2294,7 +2291,7 @@ The `bitcoin` group membership is what lets Electrs read
    exit
    ```
 
-## Systemd unit [#systemd-unit]
+## systemd unit [#systemd-unit]
 
 1. As `admin`, create the unit file:
 
@@ -2381,7 +2378,7 @@ sudo apt install stunnel4
 
 stunnel doesn't do automatic CA issuance the way Caddy does for HTTP.
 You generate a self-signed certificate once and point the config at
-it. This takes a single command:
+it.
 
 Generate a 10-year self-signed certificate and matching key:
 
@@ -2503,7 +2500,7 @@ Move into the source tree:
 cd /home/admin/rust/electrs
 ```
 
-Discard any build artefacts and stray files:
+Discard any build artifacts and stray files:
 
 ```bash
 git clean -xfd
@@ -2649,7 +2646,7 @@ These guides are optional: the main path works without any of them.
   </Card>
 
   <Card title="Raspberry Pi bonus" href="/docs/bonus/raspberry-pi">
-    System overviews, aliases, UPS integration, alternative hardware, and hardware-wallet SSH.
+    System overviews, aliases, UPS integration, alternative hardware, and SSH login with a hardware wallet.
   </Card>
 </Cards>
 
@@ -2689,7 +2686,7 @@ The consequences matter:
   malicious peer could, in principle, refuse.
 * **Your SCB must be current.** If the peer closes at a state
   newer than the one in your SCB, LND sees a state it doesn't
-  recognise and refuses to claim. You'll still get a force-close
+  recognize and refuses to claim. You'll still get a force-close
   from the peer, just the slow path, not the SCB-accelerated one.
 * **Never use the SCB on a node that is still running the same
   channels elsewhere.** Restoring triggers force-closes; doing
@@ -2985,10 +2982,10 @@ level is: fresh Pi, same 24-word seed, latest SCB, pray.
    ```
 
 4. In a second session, create the wallet from the existing seed
-   **with** the SCB attached. The `--recovery_window` tells LND
-   how many derivation steps to scan for on-chain activity,
-   10000 is plenty for a home node. The `--multi_file` flag
-   tells `lncli create` to also accept an SCB.
+   **with** the SCB attached. `lncli create` walks you through
+   this interactively: it asks for the seed, an optional address
+   look-ahead (how many derivation steps LND scans for on-chain
+   activity; 10000 is plenty for a home node), and the SCB file.
 
    Switch to the `lnd` user:
 
@@ -3180,9 +3177,10 @@ location. Same pattern you used for `bitcoind`.
    sudo adduser --disabled-password --gecos "" lnd
    ```
 
-   Add it to the `bitcoin` and `debian-tor` groups so it can read
-   `bitcoin.conf` for auto-RPC and Tor's cookie file for the control
-   port:
+   Add it to the `debian-tor` group so it can read Tor's cookie
+   file for the control port, and to the `bitcoin` group (the
+   standard grouping on this node; the RPC credentials themselves
+   go into `lnd.conf` below):
 
    ```bash
    sudo usermod -a -G bitcoin,debian-tor lnd
@@ -3405,7 +3403,7 @@ chain backend, Tor, channel policy, watchtower client, all of it.
    ```
 
 2. Paste the following. Replace `YourAlias` with whatever name you
-   want to show up in channel graphs, and pick a hex colour you
+   want to show up in channel graphs, and pick a hex color you
    like:
 
    ```ini
@@ -3429,8 +3427,6 @@ chain backend, Tor, channel policy, watchtower client, all of it.
    tlsdisableautofill=true
 
    # Channel defaults
-   bitcoin.basefee=1000
-   bitcoin.feerate=1
    minchansize=100000
    accept-keysend=true
    accept-amp=true
@@ -3448,6 +3444,9 @@ chain backend, Tor, channel policy, watchtower client, all of it.
    bitcoin.active=true
    bitcoin.mainnet=true
    bitcoin.node=bitcoind
+   # Default routing fees for new channels
+   bitcoin.basefee=1000
+   bitcoin.feerate=1
 
    [Bitcoind]
    bitcoind.rpchost=127.0.0.1:8332
@@ -3472,8 +3471,10 @@ chain backend, Tor, channel policy, watchtower client, all of it.
    wtclient.active=true
    ```
 
-   Replace `PASSWORD_B_REPLACE_ME` with the `rpcpass` from your
-   `bitcoin.conf` (password `[B]` from the Bitcoin section).
+   Replace `PASSWORD_B_REPLACE_ME` with password `[B]`, the same
+   password you fed to `rpcauth.py` when setting up Bitcoin Core
+   (`bitcoin.conf` only stores its salted hash, so you won't find
+   the cleartext there).
 
 <Callout type="info" title="Stream isolation, and why we skip it for bitcoind">
   `tor.streamisolation=true` gives every outbound Lightning
@@ -3674,7 +3675,7 @@ exit
    ln -s /data/lnd /home/admin/.lnd
    ```
 
-   Add group-execute on every directory under `data/`:
+   Add group-execute on every directory under `/data/lnd/data/`:
 
    ```bash test:skip
    sudo chmod -R g+X /data/lnd/data/
@@ -3703,13 +3704,20 @@ exit
    `block_height`, and `synced_to_chain: true` once LND has caught
    up with the graph. `getnetworkinfo` should show a non-zero
    number of nodes and channels, proof that LND is talking to the
-   wider Lightning network over Tor.
+   wider Lightning Network over Tor.
 
 **Main takeaway:** LND is up, the wallet is unlocked, the 24-word
 seed is on paper, and `lncli` works from `admin`. You have a
 working Lightning node.
 
 ## Fund the node and open a channel [#fund-the-node-and-open-a-channel]
+
+<Callout type="info" title="Before you open channels in anger">
+  Set up [Channel backup](/docs/lightning/channel-backup) **before**
+  you open your first real channel. The backup is only useful if it
+  exists when you need it, and you need it as soon as the first
+  channel lands.
+</Callout>
 
 1. Generate a native-SegWit address and send a small amount of
    on-chain sats to it from another wallet:
@@ -3747,13 +3755,6 @@ working Lightning node.
    ```bash test:skip
    lncli listchannels
    ```
-
-<Callout type="info" title="Before you open channels in anger">
-  Set up [Channel backup](/docs/lightning/channel-backup) **before**
-  you open your first real channel. The backup is only useful if it
-  exists when you need it, and you need it as soon as the first
-  channel lands.
-</Callout>
 
 ## Add watchtowers [#add-watchtowers]
 
@@ -3793,26 +3794,36 @@ add two or three more for redundancy.
 
 A small reference you'll come back to:
 
+Node info and peers:
+
 ```bash test:skip
-# node info and peers
 lncli getinfo
 lncli listpeers
+```
 
-# channels
+Channels:
+
+```bash test:skip
 lncli pendingchannels
 lncli listchannels
 lncli closechannel --sat_per_vbyte <fee> <funding_txid> <output_index>
 lncli closechannel --force <funding_txid> <output_index>
+```
 
-# payments
+Payments:
+
+```bash test:skip
 lncli decodepayreq <invoice>
 lncli payinvoice <invoice>
 lncli sendpayment --amp --dest=<pubkey> --amt=<sats>
 lncli addinvoice <sats>
 lncli listinvoices
 lncli listpayments
+```
 
-# help
+Help:
+
+```bash test:skip
 lncli
 lncli help <command>
 ```
@@ -3831,9 +3842,7 @@ database migrations that are one-way. Before every upgrade:
 2. Stop the service: `sudo systemctl stop lnd`.
 3. Repeat the download, verify, and install steps above with the
    new version.
-4. Update `0.20.1-beta` in `lib/versions.ts` so the rest of the
-   guide agrees.
-5. Start the service: `sudo systemctl start lnd` and tail the log
+4. Start the service: `sudo systemctl start lnd` and tail the log
    until you see `synced_to_chain: true`.
 
 
@@ -3982,7 +3991,7 @@ terminal window, and scan it with the phone.
    * Use its **built-in Tor daemon** (Android only, toggle in
      Zeus settings), convenient, but note that channel ops will
      fail if the app is backgrounded aggressively by Android's
-     battery optimiser.
+     battery optimizer.
 
 3. Open Zeus, tap **Get Started**, then **Connect a node**.
 
@@ -4085,7 +4094,7 @@ LAN.
 
 <Screenshot src="/images/lightning_rtl.png" alt="Ride The Lightning dashboard showing channel list, balances, and routing stats" caption="Ride The Lightning: channels, on-chain, routing, fees, all in one dashboard" />
 
-## Install Node.js 22 [#install-nodejs-22]
+## Install Node.js [#install-nodejs]
 
 RTL is a Node.js application and needs a recent LTS runtime. The
 NodeSource repository gives you upstream Node without waiting for
@@ -4161,8 +4170,8 @@ exposed HTTP port, and a compromise there should not hand an
 attacker LND's admin macaroon. A dedicated `rtl` user keeps the
 blast radius small.
 
-1. Create the user. RTL only needs to **read** the macaroon; the
-   copy is what keeps `rtl` out of `/data/lnd`.
+1. RTL only needs to **read** the macaroon; the copy is what
+   keeps `rtl` out of `/data/lnd`.
 
    Create the service user:
 
@@ -4568,7 +4577,7 @@ By the time you finish, you'll have:
 
 ## Assumptions [#assumptions]
 
-* You have the hardware listed in [Preparations](preparations):
+* You have the hardware listed in [Preparations](/docs/raspberry-pi/preparations):
   a Pi 5 (8 GB), a 27W USB-C PD power supply, a 2 TB USB 3 SSD, and
   active cooling.
 * You have a regular computer (macOS, Linux, or Windows 10/11) to
@@ -4579,21 +4588,21 @@ By the time you finish, you'll have:
 
 ## Pages in this section [#pages-in-this-section]
 
-1. [Preparations](preparations), hardware list, passwords,
+1. [Preparations](/docs/raspberry-pi/preparations), hardware list, passwords,
    home-network hygiene.
-2. [Operating system](operating-system), flash Raspberry Pi OS
+2. [Operating system](/docs/raspberry-pi/operating-system), flash Raspberry Pi OS
    Lite (64-bit) to the SSD and boot the Pi.
-3. [Remote access](remote-access), connect over SSH, learn the
+3. [Remote access](/docs/raspberry-pi/remote-access), connect over SSH, learn the
    command-line basics, set up an SSH key.
-4. [System configuration](system-configuration), update
+4. [System configuration](/docs/raspberry-pi/system-configuration), update
    packages, verify SSD speed, create the data directory, check swap.
-5. [Security](security), disable password SSH, harden sshd,
+5. [Security](/docs/raspberry-pi/security), disable password SSH, harden sshd,
    firewall, fail2ban, open-files limit, disable Bluetooth/Wi-Fi.
-6. [Privacy](privacy), install Tor for Bitcoin and Lightning
+6. [Privacy](/docs/raspberry-pi/privacy), install Tor for Bitcoin and Lightning
    peer traffic, then add Tailscale for remote SSH access.
 
 When this section is in the bag, move on to the
-[Bitcoin](../bitcoin/index) section. This is why the upcoming
+[Bitcoin](/docs/bitcoin) section. This is why the upcoming
 chapters can focus on Bitcoin and Lightning itself rather than
 doubling back to patch the plumbing.
 
@@ -4609,7 +4618,7 @@ ever connecting a screen or keyboard to it.
 
 ## Which operating system? [#which-operating-system]
 
-Which flavour of Linux belongs on a node? You'll use &#x2A;*Raspberry Pi
+Which flavor of Linux belongs on a node? You'll use &#x2A;*Raspberry Pi
 OS Lite (64-bit)**: a minimal, headless Debian-based system with no
 desktop environment. No wasted RAM on things you'll never see.
 
@@ -4664,7 +4673,7 @@ On the &#x2A;*"General"** tab:
 * **Set username and password**, turn this on, enter the username
   `admin`, and use your &#x2A;*password \[A]**. Every command in this
   guide assumes the user is called `admin`.
-* **Configure wifi**, only if you plan to connect over Wi-Fi.
+* **Configure wireless LAN**, only if you plan to connect over Wi-Fi.
   Enter the SSID and password, and set the two-letter country code
   (e.g. `US`, `DE`, `CH`). Leave this blank if you'll use Ethernet,
   which, if you're sitting near the router, is what you want.
@@ -4745,7 +4754,7 @@ Your Pi should now boot from the SSD.
 <Callout type="info">
   If USB boot still doesn't work after reflashing, the drive or
   enclosure is most likely the problem, see
-  [Troubleshooting](../troubleshooting) for known-good chipsets
+  [Troubleshooting](/docs/troubleshooting) for known-good chipsets
   and workarounds.
 </Callout>
 
@@ -4776,7 +4785,7 @@ gets its own callouts wherever the story differs.
 | Cable        | Short USB 3 cable rated for SSDs (often included with the enclosure) |
 | Case         | Optional, but recommended for protection                             |
 
-<Screenshot src="/images/raspberry-pi_hardware.png" alt="Raspberry Pi 5 with SSD, power supply, and cooling — the full hardware kit" />
+<Screenshot src="/images/raspberry-pi_hardware.png" alt="Raspberry Pi 5 with SSD, power supply, and cooling, the full hardware kit" />
 
 No microSD card? Correct, you'll boot the operating system directly
 from the SSD. It's faster, more reliable, and one fewer component to
@@ -5138,8 +5147,8 @@ anywhere without opening a port.
 <Callout type="warn" title="Don't expose sshd publicly">
   Tailscale makes remote SSH so frictionless that the old "open
   port 22 to the internet" pattern stops being necessary. Keep your
-  ufw rule scoped to the LAN (`192.168.0.0/24` or similar), the
-  tailnet interface bypasses ufw by default on a fresh install, so
+  UFW rule scoped to the LAN (`192.168.0.0/24` or similar), the
+  tailnet interface bypasses UFW by default on a fresh install, so
   Tailscale devices can still reach the Pi without the firewall
   being in the way.
 </Callout>
@@ -5235,7 +5244,7 @@ are worth a minute of your life:
   paste at the cursor.
 
 A selective reference of useful Linux commands lives in the
-[FAQ](../faq), bookmark it.
+[FAQ](/docs/faq), bookmark it.
 
 ## Set up an SSH key [#set-up-an-ssh-key]
 
@@ -5244,7 +5253,7 @@ it's safer (a stolen password is useless without the key file), and
 it's less typing (no password prompts on every login). This is why
 the next few minutes of setup pay off every single time you log in.
 The plan is to set up the key here, then disable password logins
-entirely in the [Security](security) section.
+entirely in the [Security](/docs/raspberry-pi/security) section.
 
 Key pairs sound like a cryptography homework assignment, but the
 workflow is mechanical: run one command, copy one file. This guide
@@ -5311,7 +5320,7 @@ only the passphrase that unlocks your local key file. If that's
 what happened, the key is working.
 
 Password logins on the Pi are still enabled at this point; you'll
-turn them off in the next chapter on [Security](security).
+turn them off in the next chapter on [Security](/docs/raspberry-pi/security).
 
 
 # Security (/docs/raspberry-pi/security)
@@ -5329,7 +5338,7 @@ Debian hygiene, applied in the right order.
 ## Disable password SSH login [#disable-password-ssh-login]
 
 You already set up an Ed25519 key in
-[Remote access](remote-access#set-up-an-ssh-key). Time to turn
+[Remote access](/docs/raspberry-pi/remote-access#set-up-an-ssh-key). Time to turn
 off password logins entirely so only someone holding the private key
 can reach the Pi.
 
@@ -5405,7 +5414,7 @@ can reach the Pi.
 **Main takeaway:** only your private key can reach the Pi over
 SSH now, passwords are off the table.
 
-## Firewall (ufw) [#firewall-ufw]
+## Firewall (UFW) [#firewall-ufw]
 
 The **Uncomplicated Firewall** (`ufw`) is Debian's friendly front-end
 to `iptables`. For now it only needs to allow SSH, every service
@@ -5435,7 +5444,7 @@ you add later will open its own port when the time comes.
 
    Allow SSH with rate limiting. `ufw limit ssh` blocks any IP making
    six or more connection attempts within 30 seconds, a first layer
-   of brute-force defence on top of what `fail2ban` does below:
+   of brute-force defense on top of what `fail2ban` does below:
 
    ```bash
    sudo ufw limit ssh
@@ -5577,7 +5586,7 @@ too low for that and throws `too many open files` errors.
 2. Make sure PAM actually applies those limits on login. Open the
    first PAM session file:
 
-   ```bash
+   ```bash test:append
    sudo nano /etc/pam.d/common-session
    ```
 
@@ -5587,10 +5596,16 @@ too low for that and throws `too many open files` errors.
    session required                        pam_limits.so
    ```
 
-   Open the non-interactive companion file and add the same line:
+   Open the non-interactive companion file:
 
-   ```bash
+   ```bash test:append
    sudo nano /etc/pam.d/common-session-noninteractive
+   ```
+
+   Add the same line:
+
+   ```text
+   session required                        pam_limits.so
    ```
 
 The new limits kick in at the next login.
@@ -5723,7 +5738,7 @@ Anything above **100 MB/s** is fine for a full node. If you see
 numbers below 50 MB/s, the enclosure is probably falling back to UAS
 mode with a buggy driver, a well-known problem with certain chipsets
 (hello again, JMicron). The
-[Fix bad USB3 performance](../troubleshooting#fix-bad-usb3-performance)
+[USB SSD is too slow](/docs/troubleshooting#usb-ssd-is-too-slow)
 section in Troubleshooting walks through disabling UAS for a specific
 drive.
 
@@ -6041,7 +6056,7 @@ fee or become a liquidity maker and earn sats for providing the
 inputs others use to mix.
 
 
-# Mempool Explorer (/docs/bonus/bitcoin/mempool)
+# Mempool explorer (/docs/bonus/bitcoin/mempool)
 
 
 
@@ -6057,19 +6072,20 @@ puts the Angular frontend behind HTTPS on port 4080.
 ## Requirements [#requirements]
 
 * [Electrum server](/docs/bitcoin/electrum-server) running (Electrs on port 50001)
-* Node.js 22 installed (from the [BTC RPC Explorer guide](/docs/bitcoin/blockchain-explorer#install-nodejs-22-lts) or standalone via `nodesource.com`)
+* Node.js 22 installed (from the [BTC RPC Explorer guide](/docs/bitcoin/blockchain-explorer#install-nodejs) or standalone via `nodesource.com`)
 * Caddy installed (from the same guide or standalone via `caddyserver.com`)
-* \~5 GB free on the SSD: build artefacts under `/home/mempool/` take 4-5 GB; the MariaDB database starts small but
+* \~5 GB free on the SSD: build artifacts under `/home/mempool/` take 4-5 GB; the MariaDB database starts small but
   grows to \~5 GB with full historical address indexing enabled
 * A Pi 5 with 8 GB of RAM. Older boards struggle, see below.
 
 <Callout type="warn" title="Pi 4 8 GB: expect instability">
   Mempool 3.x is memory-hungry. A community report on the v4 preview
   ([raspibolt/raspibolt#1526](https://github.com/raspibolt/raspibolt/issues/1526))
-  described v3.3.1 crashing on a Pi 4 8 GB after a few
-  hours of normal load, with a pinned older release being the only way
-  to keep it stable. If you're on a Pi 4, either accept the operational
-  risk, pin to an older Mempool release in step "Clone Mempool" below
+  described the then-current Mempool 3.x release crashing on a Pi 4
+  8 GB after a few hours of normal load, with a pinned older release
+  being the only way to keep it stable. If you're on a Pi 4, either
+  accept the operational risk, pin to an older Mempool release in
+  [Install Mempool](#install-mempool) below
   (check `git tag` in the mempool repo and `git checkout v3.0.0` or a
   similar earlier tag instead of the default branch), or skip this
   guide and use a public mempool.space mirror over Tor for occasional
@@ -6557,7 +6573,7 @@ sudo rm /etc/systemd/system/mempool.service
 Drop the firewall rule:
 
 ```bash
-sudo ufw delete "allow 4080/tcp"
+sudo ufw delete allow 4080/tcp
 ```
 
 Remove the Mempool block from `/etc/caddy/Caddyfile`, then reload:
@@ -7172,8 +7188,8 @@ Explorer, or whatever else you've spun up.
 
 This section covers the host system rather than the Bitcoin or
 Lightning stack: shell tweaks, dashboards, alternative boot and
-hardware configurations, UPS integration, and hardware-wallet-based
-SSH. None of it is required for a working node, it's what you
+hardware configurations, UPS integration, and SSH login backed by a
+hardware wallet. None of it is required for a working node, it's what you
 reach for when you're ready to polish the setup.
 
 <Callout type="info" title="Content being migrated">

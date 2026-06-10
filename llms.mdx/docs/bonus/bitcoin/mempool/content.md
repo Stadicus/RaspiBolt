@@ -1,4 +1,4 @@
-# Mempool Explorer (/docs/bonus/bitcoin/mempool)
+# Mempool explorer (/docs/bonus/bitcoin/mempool)
 
 
 
@@ -14,19 +14,20 @@ puts the Angular frontend behind HTTPS on port 4080.
 ## Requirements [#requirements]
 
 * [Electrum server](/docs/bitcoin/electrum-server) running (Electrs on port 50001)
-* Node.js 22 installed (from the [BTC RPC Explorer guide](/docs/bitcoin/blockchain-explorer#install-nodejs-22-lts) or standalone via `nodesource.com`)
+* Node.js 22 installed (from the [BTC RPC Explorer guide](/docs/bitcoin/blockchain-explorer#install-nodejs) or standalone via `nodesource.com`)
 * Caddy installed (from the same guide or standalone via `caddyserver.com`)
-* \~5 GB free on the SSD: build artefacts under `/home/mempool/` take 4-5 GB; the MariaDB database starts small but
+* \~5 GB free on the SSD: build artifacts under `/home/mempool/` take 4-5 GB; the MariaDB database starts small but
   grows to \~5 GB with full historical address indexing enabled
 * A Pi 5 with 8 GB of RAM. Older boards struggle, see below.
 
 <Callout type="warn" title="Pi 4 8 GB: expect instability">
   Mempool 3.x is memory-hungry. A community report on the v4 preview
   ([raspibolt/raspibolt#1526](https://github.com/raspibolt/raspibolt/issues/1526))
-  described v3.3.1 crashing on a Pi 4 8 GB after a few
-  hours of normal load, with a pinned older release being the only way
-  to keep it stable. If you're on a Pi 4, either accept the operational
-  risk, pin to an older Mempool release in step "Clone Mempool" below
+  described the then-current Mempool 3.x release crashing on a Pi 4
+  8 GB after a few hours of normal load, with a pinned older release
+  being the only way to keep it stable. If you're on a Pi 4, either
+  accept the operational risk, pin to an older Mempool release in
+  [Install Mempool](#install-mempool) below
   (check `git tag` in the mempool repo and `git checkout v3.0.0` or a
   similar earlier tag instead of the default branch), or skip this
   guide and use a public mempool.space mirror over Tor for occasional
@@ -514,7 +515,7 @@ sudo rm /etc/systemd/system/mempool.service
 Drop the firewall rule:
 
 ```bash
-sudo ufw delete "allow 4080/tcp"
+sudo ufw delete allow 4080/tcp
 ```
 
 Remove the Mempool block from `/etc/caddy/Caddyfile`, then reload:

@@ -33,7 +33,7 @@ The consequences matter:
   malicious peer could, in principle, refuse.
 * **Your SCB must be current.** If the peer closes at a state
   newer than the one in your SCB, LND sees a state it doesn't
-  recognise and refuses to claim. You'll still get a force-close
+  recognize and refuses to claim. You'll still get a force-close
   from the peer, just the slow path, not the SCB-accelerated one.
 * **Never use the SCB on a node that is still running the same
   channels elsewhere.** Restoring triggers force-closes; doing
@@ -329,10 +329,10 @@ level is: fresh Pi, same 24-word seed, latest SCB, pray.
    ```
 
 4. In a second session, create the wallet from the existing seed
-   **with** the SCB attached. The `--recovery_window` tells LND
-   how many derivation steps to scan for on-chain activity,
-   10000 is plenty for a home node. The `--multi_file` flag
-   tells `lncli create` to also accept an SCB.
+   **with** the SCB attached. `lncli create` walks you through
+   this interactively: it asks for the seed, an optional address
+   look-ahead (how many derivation steps LND scans for on-chain
+   activity; 10000 is plenty for a home node), and the SCB file.
 
    Switch to the `lnd` user:
 

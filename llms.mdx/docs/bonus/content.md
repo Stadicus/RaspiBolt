@@ -24,6 +24,6 @@ These guides are optional: the main path works without any of them.
   </Card>
 
   <Card title="Raspberry Pi bonus" href="/docs/bonus/raspberry-pi">
-    System overviews, aliases, UPS integration, alternative hardware, and hardware-wallet SSH.
+    System overviews, aliases, UPS integration, alternative hardware, and SSH login with a hardware wallet.
   </Card>
 </Cards>

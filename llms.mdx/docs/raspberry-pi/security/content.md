@@ -13,7 +13,7 @@ Debian hygiene, applied in the right order.
 ## Disable password SSH login [#disable-password-ssh-login]
 
 You already set up an Ed25519 key in
-[Remote access](remote-access#set-up-an-ssh-key). Time to turn
+[Remote access](/docs/raspberry-pi/remote-access#set-up-an-ssh-key). Time to turn
 off password logins entirely so only someone holding the private key
 can reach the Pi.
 
@@ -89,7 +89,7 @@ can reach the Pi.
 **Main takeaway:** only your private key can reach the Pi over
 SSH now, passwords are off the table.
 
-## Firewall (ufw) [#firewall-ufw]
+## Firewall (UFW) [#firewall-ufw]
 
 The **Uncomplicated Firewall** (`ufw`) is Debian's friendly front-end
 to `iptables`. For now it only needs to allow SSH, every service
@@ -119,7 +119,7 @@ you add later will open its own port when the time comes.
 
    Allow SSH with rate limiting. `ufw limit ssh` blocks any IP making
    six or more connection attempts within 30 seconds, a first layer
-   of brute-force defence on top of what `fail2ban` does below:
+   of brute-force defense on top of what `fail2ban` does below:
 
    ```bash
    sudo ufw limit ssh
@@ -261,7 +261,7 @@ too low for that and throws `too many open files` errors.
 2. Make sure PAM actually applies those limits on login. Open the
    first PAM session file:
 
-   ```bash
+   ```bash test:append
    sudo nano /etc/pam.d/common-session
    ```
 
@@ -271,10 +271,16 @@ too low for that and throws `too many open files` errors.
    session required                        pam_limits.so
    ```
 
-   Open the non-interactive companion file and add the same line:
+   Open the non-interactive companion file:
 
-   ```bash
+   ```bash test:append
    sudo nano /etc/pam.d/common-session-noninteractive
+   ```
+
+   Add the same line:
+
+   ```text
+   session required                        pam_limits.so
    ```
 
 The new limits kick in at the next login.

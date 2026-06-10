@@ -31,7 +31,7 @@ middleman, no API key away from being cut off. If Bitcoin is digital
 gold, a full node is the set of scales you own and trust.
 
 That kind of independence shouldn't be reserved for people with a
-rack in a datacentre. A Raspberry Pi in the corner of your office,
+rack in a datacenter. A Raspberry Pi in the corner of your office,
 quietly validating every block that's ever been mined, is a
 delightfully democratic piece of infrastructure.
 
@@ -65,7 +65,7 @@ issues list is where the guide gets better.
 
 ## The good old days [#the-good-old-days]
 
-The original goal of the RaspiBolt guide, back in 2017, was simply
+The original goal of the RaspiBolt guide, back in 2017, was
 buying a Blockaccino. I used the
 [Eclair](https://github.com/ACINQ/eclair) Lightning implementation
 on testnet, because mainnet wasn't running yet. Oh, how time flies.

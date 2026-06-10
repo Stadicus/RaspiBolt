@@ -33,7 +33,7 @@ fully synced (`verificationprogress` at 1.0), `txindex=1`
 is in `bitcoin.conf` (the default config in this guide already has
 it), and Electrs is indexed and answering queries.
 
-## Install Node.js 22 LTS [#install-nodejs-22-lts]
+## Install Node.js [#install-nodejs]
 
 Debian 13 ships Node.js 20; BTC RPC Explorer is tested against
 Node 22. Add the NodeSource repo so `apt upgrade` keeps it current.
@@ -236,7 +236,7 @@ Stop it with `Ctrl`-`C` and exit back to `admin`:
 exit
 ```
 
-## Systemd unit [#systemd-unit]
+## systemd unit [#systemd-unit]
 
 1. Create the service file:
 

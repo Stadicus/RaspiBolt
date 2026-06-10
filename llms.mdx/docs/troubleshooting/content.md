@@ -15,7 +15,7 @@ jump back to the relevant section.
 ## Jump to the thing that's on fire [#jump-to-the-thing-thats-on-fire]
 
 <Cards>
-  <Card title="SSH locked out" href="#ssh-lockout-login-via-console">
+  <Card title="SSH locked out" href="#ssh-lockout-log-in-via-the-console">
     Wrong key, mistyped password, fail2ban banned your LAN. Console fallback.
   </Card>
 
@@ -23,7 +23,7 @@ jump back to the relevant section.
     UAS quirks, usb-storage.quirks in cmdline.txt, ASMedia vs JMicron.
   </Card>
 
-  <Card title="Firewall rules (ufw)" href="#are-the-right-ports-open-on-the-firewall">
+  <Card title="Firewall rules (UFW)" href="#are-the-right-ports-open-on-the-firewall">
     Ports 22, 8333, 9735. Subnet mismatch. LAN reachability.
   </Card>
 
@@ -59,7 +59,7 @@ commands.
 
 ## Hardware and operating system [#hardware-and-operating-system]
 
-### SSH lockout: login via console [#ssh-lockout-login-via-console]
+### SSH lockout: log in via the console [#ssh-lockout-log-in-via-the-console]
 
 If SSH refuses to let you in, wrong key, mistyped password,
 fail2ban banned you from your own LAN, plug a display and
@@ -150,7 +150,7 @@ To                         Action      From
 If your subnet doesn't match what the rules say (`192.168.0.0/24`
 versus `192.168.1.0/24`, for example), nothing on your LAN can
 reach the node. See [Security](/docs/raspberry-pi/security) for
-the canonical ufw rules.
+the canonical UFW rules.
 
 ## Users and directories [#users-and-directories]
 
